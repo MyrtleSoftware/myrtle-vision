@@ -1,0 +1,8 @@
+torch
+torchvision
+psutil
+timm
+qtorch
+numpy
+onnx
+onnxruntime

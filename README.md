@@ -5,7 +5,7 @@ as described in [this paper](https://arxiv.org/pdf/2010.11929v1.pdf).
 In addition to that, it is also possible to train the same model through
 distillation using the method described in the Data Efficient Vision Transformer
 [paper](https://arxiv.org/pdf/2012.12877v1.pdf).
-The model implementation has been taken from
+The model implementation is based on the implementation in
 [this](https://github.com/lucidrains/vit-pytorch) github repository.
 
 ## Installation

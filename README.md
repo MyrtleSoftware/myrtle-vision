@@ -109,19 +109,3 @@ Post-Training Quantization.
    the path to the trained checkpoint that will be used to evaluate the model
    accuracy. Moreover, make sure to also set the quantization format with the
    `q_format` parameter in the config file.
-
-## Convert to ONNX
-The following command can be used to export a Vision Transformer to ONNX.
-
-0. Follow the installation instructions above.
-1. Export a pre-trained model to ONNX.
-   ```bash
-   $ pwd
-   <...>/myrtle-vision
-   $ python convert_to_onnx.py \
-       -c train_configs/<config_file> \
-       -o <output file name>
-   ```
-
-   Note: make sure to set the `checkpoint_path` argument in the config file to
-   the path to the trained checkpoint that will be exported to ONNX.

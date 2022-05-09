@@ -4,5 +4,3 @@ psutil
 timm
 qtorch
 numpy
-onnx
-onnxruntime

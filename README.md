@@ -8,17 +8,14 @@ distillation using the method described in the Data Efficient Vision Transformer
 The model implementation is based on the implementation in
 [this](https://github.com/lucidrains/vit-pytorch) github repository.
 
-## Installation
-1. Set up Python dependencies.
+## Setup
+1. Install Python dependencies:
    ```bash
-   $ conda env create -f environment.yml
-   $ conda activate vit
+   $ pwd
+   <...>/myrtle-vision
+   $ pip install -r requirements.txt
    ```
-2. Install QPyTorch from source.
-    ```bash
-    $ pip install git+https://github.com/Tiiiger/QPyTorch.git
-    ```
-3. Download and setup the dataset in the base directory of the repository.
+2. Download and setup the dataset in the base directory of the repository.
    Your directory hierarchy should look like this:
    ```bash
    $ pwd

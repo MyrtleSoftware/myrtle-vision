@@ -68,7 +68,7 @@ The model implementation is based on the implementation in
    ```
 
 ## Finetuning Teacher Model
-0. Follow the installation instructions above.
+0. Follow the setup instructions above.
 1. Execute all cells in the `Finetune_CNN_Resisc45.ipynb` jupyter notebook.
 
    Note: this notebook finetunes a ResNet50 model pre-trained on ImageNet on
@@ -76,7 +76,7 @@ The model implementation is based on the implementation in
    change the training hyperparameters by changing the default parameters.
 
 ## Training
-0. Follow the installation instructions above.
+0. Follow the setup instructions above.
 1. Train the Vision Transformer model using the config file for the specific
    configuration you want to use.
    ```bash
@@ -86,7 +86,7 @@ The model implementation is based on the implementation in
    ```
 
 ## Test
-0. Follow the installation instructions above.
+0. Follow the setup instructions above.
 1. Run inference and calculate accuracy on the test set using a previously
    trained model.
    ```bash
@@ -104,7 +104,7 @@ The following instructions can be used to test both a model trained with
 Quantization-Aware Training and a model trained at full precision by applying
 Post-Training Quantization.
 
-0. Follow the installation instructions above.
+0. Follow the setup instructions above.
 1. Run inference and calculate accuracy on the test set using a quantized model
    previously trained. If the model was trained with Quantization-Aware
    Training, then you need to add the argument `--quantized_ckpt` to the

@@ -31,7 +31,6 @@ def export_model(model, sample, output_filename):
         output_filename,
         export_params=True,
         verbose=True,
-        example_outputs=example_outs,
         input_names=input_names,
         output_names=output_names,
         dynamic_axes=dynamic_axes,

@@ -9,13 +9,14 @@ The model implementation is based on the implementation in
 [this](https://github.com/lucidrains/vit-pytorch) github repository.
 
 ## Setup
-1. Install Python dependencies:
+1. (For QPyTorch) Install the non-Python dependencies, CUDA and Ninja.
+2. Install Python dependencies:
    ```bash
    $ pwd
    <...>/myrtle-vision
    $ pip install -r requirements.txt
    ```
-2. Download and setup your dataset in the base directory of the repository,
+3. Download and setup your dataset in the base directory of the repository,
    using or adding to `data_configs/data_config.json` accordingly. For example,
    for the provided Resisc45 config, your directory hierarchy should look like
    this:

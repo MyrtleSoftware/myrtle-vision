@@ -4,3 +4,5 @@ psutil
 timm
 qtorch
 numpy
+scikit-learn
+tqdm

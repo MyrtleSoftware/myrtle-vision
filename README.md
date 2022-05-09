@@ -67,6 +67,14 @@ The model implementation is based on the implementation in
    }
    ```
 
+## Finetuning Teacher Model
+0. Follow the installation instructions above.
+1. Execute all cells in the `Finetune_CNN_Resisc45.ipynb` jupyter notebook.
+
+   Note: this notebook finetunes a ResNet50 model pre-trained on ImageNet on
+   the Resisc45 dataset. You can optionally finetune a different model or
+   change the training hyperparameters by changing the default parameters.
+
 ## Training
 0. Follow the installation instructions above.
 1. Train the Vision Transformer model using the config file for the specific

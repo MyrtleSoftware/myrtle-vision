@@ -15,8 +15,10 @@ The model implementation is based on the implementation in
    <...>/myrtle-vision
    $ pip install -r requirements.txt
    ```
-2. Download and setup the dataset in the base directory of the repository.
-   Your directory hierarchy should look like this:
+2. Download and setup your dataset in the base directory of the repository,
+   using or adding to `data_configs/data_config.json` accordingly. For example,
+   for the provided Resisc45 config, your directory hierarchy should look like
+   this:
    ```bash
    $ pwd
    <...>/myrtle-vision

@@ -266,7 +266,7 @@ class ModelQuantizer:
                     activation=lambda: Quantizer(
                         NumberFormat.HalfPrecisionFloat
                     ),
-                    weight=lambda: Quantizer(NumberFormat.HalfPrecisionFloat),
+                    weight=lambda **kwargs: Quantizer(NumberFormat.HalfPrecisionFloat),
                 )
                 reassign[name] = self._activation_pre_process(
                     module, Quantizer(NumberFormat.HalfPrecisionFloat)

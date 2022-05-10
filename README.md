@@ -9,6 +9,10 @@ The model implementation is based on the implementation in
 [this](https://github.com/lucidrains/vit-pytorch) github repository.
 
 ## Setup
+
+This requires Python >3.7 and we recommend using something like `venv` or
+`conda` to manage a virtual environment to install packages.
+
 1. (For QPyTorch) Install the non-Python dependencies, CUDA and Ninja.
 2. Install Python dependencies:
    ```bash

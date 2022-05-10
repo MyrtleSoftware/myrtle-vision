@@ -124,3 +124,7 @@ Post-Training Quantization.
    the path to the trained checkpoint that will be used to evaluate the model
    accuracy. Moreover, make sure to also set the quantization format with the
    `q_format` parameter in the config file.
+
+# License
+
+[Copyright (c) 2022 Myrtle.ai](./LICENSE)

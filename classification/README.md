@@ -18,7 +18,7 @@ This requires Python >3.7 and we recommend using something like `venv` or
 2. Install Python dependencies:
    ```bash
    $ pwd
-   <...>/myrtle-vision
+   <...>/myrtle-vision/classification
    $ pip install -r requirements.txt
    ```
 3. Download and setup your dataset in the base directory of the repository,
@@ -27,7 +27,7 @@ This requires Python >3.7 and we recommend using something like `venv` or
    this:
    ```bash
    $ pwd
-   <...>/myrtle-vision
+   <...>/myrtle-vision/classification
    $ tree Resisc45
    Resisc45
    |-- images
@@ -87,7 +87,7 @@ This requires Python >3.7 and we recommend using something like `venv` or
    configuration you want to use.
    ```bash
    $ pwd
-   <...>/myrtle-vision
+   <...>/myrtle-vision/classification
    $ python train.py -c train_configs/<config_file>
    ```
 
@@ -97,7 +97,7 @@ This requires Python >3.7 and we recommend using something like `venv` or
    trained model.
    ```bash
    $ pwd
-   <...>/myrtle-vision
+   <...>/myrtle-vision/classification
    $ python test.py -c train_configs/<config_file>
    ```
 
@@ -117,7 +117,7 @@ Post-Training Quantization.
    command below.
    ```bash
    $ pwd
-   <...>/myrtle-vision
+   <...>/myrtle-vision/classification
    $ python test_quantize.py -c train_configs/<config_file>
    ```
 

@@ -28,8 +28,9 @@ accelerating inference, Post-Training Quantization to FP16 will be applied to
 them. You can test the accuracy of your trained model with FP16 weights by
 following [these steps](#test-with-quantization).
 
-Model checkpoints are saved automatically during training and can be imported in
-to the inference acceleration solution.
+Model checkpoints are saved automatically during training (see
+[Training](#training) and can be imported in to the inference acceleration
+solution.
 
 ## Setup
 
@@ -112,19 +113,24 @@ This requires Python >=3.7 and we recommend using something like `venv` or
    change the training hyperparameters by changing the default parameters.
 
 ## Training
-1. Train the Vision Transformer model using the config file for the specific
-   configuration you want to use. Use the provided `vit_` config files to train
-   a vision transformer without distillation, and use the `deit_` config files
-   to train a vision transformer with distillation. If training with
-   distillation, ensure that the `teacher_weights_path` in the training config
-   points to the teacher model's weights.
+1. Train the Vision Transformer model using the training config file for the
+   specific configuration you want to use. Use the provided `vit_` config files
+   to train a vision transformer without distillation, and use the `deit_`
+   config files to train a vision transformer with distillation. If training
+   with distillation, ensure that the `teacher_weights_path` in the training
+   config points to the teacher model's weights.
    ```bash
    $ pwd
    <...>/myrtle-vision/classification
    $ python train.py -c train_configs/<config_file>
    ```
 
-   Model checkpoints will be saved intermittently in a subdirectory.
+   You can resume training from a previous training run by setting the
+   `checkpoint_path` parameter in the training config to the path of the
+   checkpoint you want to resume training from.
+
+   Model checkpoints will be saved intermittently in a subdirectory specified by
+   the `output_directory` parameter in the training config.
 
 ### Quantization-Aware Training
 Models can be trained using Quantization-Aware Training by setting the

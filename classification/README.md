@@ -1,30 +1,55 @@
 # Vision Transformer
 
-This directory contains the code to train and test the Vision Transformer model
+This directory contains the code to train and test the Vision Transformer (ViT) model
 for image classification, as described in [this
 paper](https://arxiv.org/pdf/2010.11929v1.pdf). In addition to that, it is also
 possible to train the same model through distillation using the method
-described in the Data Efficient Vision Transformer
+described in the Data Efficient Vision Transformer (DeiT)
 [paper](https://arxiv.org/pdf/2012.12877v1.pdf). The model implementation is
 based on the implementation in
 [this](https://github.com/lucidrains/vit-pytorch) github repository.
 
+## Models Supported for Accelerated Inference
+
+The training configurations supported by the myrtle.ai vision acceleration
+solution are:
+
+- [ViT Tiny](train_configs/vit_tiny.json)
+- [DeiT Tiny](train_configs/deit_tiny.json)
+
+These are used to train the -Ti variants of ViT and DeiT described in the [DeiT
+paper](https://arxiv.org/pdf/2012.12877v1.pdf).
+
+Other configurations are provided for the Small and Base variants of the ViT and
+DeiT models, but these are currently not supported for accelerated inference.
+
+The provided configurations train the model using FP32 weights. When
+accelerating inference, Post-Training Quantization to FP16 will be applied to
+them. You can test the accuracy of your trained model with FP16 weights by
+following [these steps](#test-with-quantization).
+
+Model checkpoints are saved automatically during training and can be imported in
+to the inference acceleration solution.
+
 ## Setup
 
-This requires Python >3.7 and we recommend using something like `venv` or
-`conda` to manage a virtual environment to install packages.
+Follow these setup steps before moving on to any of the steps below.
 
-1. (For QPyTorch) Install the non-Python dependencies, CUDA and Ninja.
+This requires Python >=3.7 and we recommend using something like `venv` or
+`conda` to manage a virtual environment to install the Python dependencies.
+
+1. Install the non-Python dependencies, CUDA and Ninja. These are needed for the
+   QPyTorch library to work.
 2. Install Python dependencies:
    ```bash
    $ pwd
    <...>/myrtle-vision/classification
    $ pip install -r requirements.txt
    ```
-3. Download and setup your dataset in the base directory of the repository,
+3. Download and set up your dataset in the base directory of the repository,
    using or adding to `data_configs/data_config.json` accordingly. For example,
-   for the provided Resisc45 config, your directory hierarchy should look like
-   this:
+   if using the Resisc45 dataset with the provided Resisc45 config, your
+   directory hierarchy should look like this:
    ```bash
    $ pwd
    <...>/myrtle-vision/classification
@@ -46,8 +71,11 @@ This requires Python >3.7 and we recommend using something like `venv` or
    `-- val_imagepaths.txt
    ```
 
+   (See [here](https://www.tensorflow.org/datasets/catalog/resisc45) for
+   information and a download link for the Resisc45 dataset.)
+
    Each of the `_imagepaths.txt` files should contain a list of relative
-   filepaths of the images in that set, e.g.
+   filepaths of the images in that subset, e.g.
 
    ```
    $ head Resisc45/val_imagepaths.txt
@@ -74,7 +102,9 @@ This requires Python >3.7 and we recommend using something like `venv` or
    ```
 
 ## Finetuning Teacher Model
-0. Follow the setup instructions above.
+   This step is only needed if you want to train a Vision Transformer using
+   distillation (i.e. DeiT).
+
 1. Execute all cells in the `Finetune_CNN_Resisc45.ipynb` jupyter notebook.
 
    Note: this notebook finetunes a ResNet50 model pre-trained on ImageNet on
@@ -82,17 +112,28 @@ This requires Python >3.7 and we recommend using something like `venv` or
    change the training hyperparameters by changing the default parameters.
 
 ## Training
-0. Follow the setup instructions above.
 1. Train the Vision Transformer model using the config file for the specific
-   configuration you want to use.
+   configuration you want to use. Use the provided `vit_` config files to train
+   a vision transformer without distillation, and use the `deit_` config files
+   to train a vision transformer with distillation. If training with
+   distillation, ensure that the `teacher_weights_path` in the training config
+   points to the teacher model's weights.
    ```bash
    $ pwd
    <...>/myrtle-vision/classification
    $ python train.py -c train_configs/<config_file>
    ```
 
+   Model checkpoints will be saved intermittently in a subdirectory.
+
+### Quantization-Aware Training
+Models can be trained using Quantization-Aware Training by setting the
+`q_config` parameter in the training config to a quantized format such as
+`FP16_16` or `FP16_32`. However, note that this is not supported for accelerated
+inference and Post-Training Quantization will be used instead, which does not
+require any changes to the training config at training time.
+
 ## Test
-0. Follow the setup instructions above.
 1. Run inference and calculate accuracy on the test set using a previously
    trained model.
    ```bash
@@ -110,8 +151,11 @@ The following instructions can be used to test both a model trained with
 Quantization-Aware Training and a model trained at full precision by applying
 Post-Training Quantization.
 
-0. Follow the setup instructions above.
-1. Run inference and calculate accuracy on the test set using a quantized model
+1. Set the `q_format` parameter in the training config file to a supported
+   quantization format. Several formats are supported, but `FP16_32` (weights
+   and activations at FP16, accumulations at FP32) matches the quantization
+   that will be applied for accelerated inference most closely.
+2. Run inference and calculate accuracy on the test set using a quantized model
    previously trained. If the model was trained with Quantization-Aware
    Training, then you need to add the argument `--quantized_ckpt` to the
    command below.
@@ -123,5 +167,4 @@ Post-Training Quantization.
 
    Note: make sure to set the `checkpoint_path` argument in the config file to
    the path to the trained checkpoint that will be used to evaluate the model
-   accuracy. Moreover, make sure to also set the quantization format with the
-   `q_format` parameter in the config file.
+   accuracy.

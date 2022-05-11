@@ -20,7 +20,7 @@ solution are:
 These are used to train the -Ti variants of ViT and DeiT described in the [DeiT
 paper](https://arxiv.org/pdf/2012.12877v1.pdf).
 
-Other configurations are provided for the Small and Base variants of the ViT and
+Configurations are also provided for the Small and Base variants of the ViT and
 DeiT models, but these are currently not supported for accelerated inference.
 
 The provided configurations train the model using FP32 weights. When

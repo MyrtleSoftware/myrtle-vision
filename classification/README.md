@@ -29,7 +29,7 @@ them. You can test the accuracy of your trained model with FP16 weights by
 following [these steps](#test-with-quantization).
 
 Model checkpoints are saved automatically during training (see
-[Training](#training) and can be imported in to the inference acceleration
+[Training](#training)) and can be imported in to the inference acceleration
 solution.
 
 ## Setup

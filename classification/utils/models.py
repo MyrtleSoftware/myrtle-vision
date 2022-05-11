@@ -62,12 +62,15 @@ def prepare_model_and_load_ckpt(
     model,
     optimizer=None,
     lr_scheduler=None,
-    train_steps_total=-1,
 ):
     if train_config["checkpoint_path"] != "":
-        iteration = torch.load(
-            train_config["checkpoint_path"], map_location="cpu"
-        )["iteration"]
+        # resume training from checkpoint file
+        iteration = load_checkpoint(
+            model=model,
+            optimizer=optimizer,
+            lr_scheduler=lr_scheduler,
+            filepath=train_config["checkpoint_path"],
+        )
     else:
         # train from scratch
         iteration = 0

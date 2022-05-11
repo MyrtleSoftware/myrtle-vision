@@ -98,7 +98,6 @@ def test_deit(config, calib_steps, quantized_ckpt):
         train_config["checkpoint_path"] != ""
     ), "Must provide a checkpoint path in the config file"
     prepare_model_and_load_ckpt(train_config=train_config, model=vit)
-    vit.eval()
 
     if not quantized_ckpt:
         vit.quantizer.prepare_qat(q_format)

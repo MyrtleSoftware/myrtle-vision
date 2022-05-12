@@ -39,7 +39,7 @@ for label in labels:
         pos += split_sizes[i]
 
 for i in range(len(split_names)):
-    imagepaths_path = resisc45_dir / f"{split_names[i]}_imagepaths"
+    imagepaths_path = resisc45_dir / f"{split_names[i]}_imagepaths.txt"
     print(f"Creating image paths file {imagepaths_path}")
     imagepaths_path.write_text(
         "\n".join(str(p.relative_to(resisc45_dir)) for p in split_paths[i])

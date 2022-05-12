@@ -50,7 +50,8 @@ This requires Python >=3.7 and we recommend using something like `venv` or
 3. Download and set up your dataset in the base directory of the repository,
    using or adding to `data_configs/data_config.json` accordingly. For example,
    if using the Resisc45 dataset with the provided Resisc45 config, your
-   directory hierarchy should look like this:
+   directory hierarchy should look like this (see [below](#Resisc45) for how to
+   set up the Resisc45 dataset automatically):
    ```bash
    $ pwd
    <...>/myrtle-vision/classification

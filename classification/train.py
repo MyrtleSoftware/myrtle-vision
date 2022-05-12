@@ -152,13 +152,11 @@ def train_deit(rank, num_gpus, config):
     # during validation
     criterion = torch.nn.CrossEntropyLoss()
 
-    train_steps_total = (len(train_loader) // n_batch_accum) * epochs
     iteration = prepare_model_and_load_ckpt(
         train_config=train_config,
         model=vit.module if num_gpus > 1 else vit,
         optimizer=optimizer,
         lr_scheduler=lr_scheduler,
-        train_steps_total=train_steps_total,
     )
 
     # Train loop

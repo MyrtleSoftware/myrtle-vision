@@ -4,8 +4,7 @@ import random
 import torch.utils.data
 from PIL import Image
 from torchvision import transforms
-from utils.utils import get_label_number
-from utils.utils import load_imagepaths_and_labels
+from myrtle_vision.utils import get_label_number, load_imagepaths_and_labels
 
 
 class Resisc45Loader(torch.utils.data.Dataset):

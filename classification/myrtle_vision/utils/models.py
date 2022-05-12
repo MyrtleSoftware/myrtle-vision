@@ -3,10 +3,10 @@ import argparse
 import torch
 from quantize import QFormat
 from torchvision.models import resnet50
-from utils.utils import parse_config
-from vit_pytorch.distill import DistillableViT
-from vit_pytorch.distill import DistillWrapper
-from vit_pytorch.vit_pytorch import ViT
+from myrtle_vision.utils import parse_config
+from myrtle_vision.distill import DistillableViT
+from myrtle_vision.distill import DistillWrapper
+from myrtle_vision.vit import ViT
 
 
 def get_teacher(num_classes, weights_path):

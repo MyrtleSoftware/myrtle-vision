@@ -6,9 +6,8 @@ from sklearn.metrics import classification_report
 from torch.utils.data import DataLoader
 from torchvision import models
 from tqdm import tqdm
-from utils.data_loader import Resisc45Loader
-from utils.utils import get_label_list
-from utils.utils import parse_config
+from myrtle_vision.data_loader import Resisc45Loader
+from myrtle_vision.utils import get_label_list, parse_config
 
 
 def get_cnn(num_classes, model_name, weights_path):

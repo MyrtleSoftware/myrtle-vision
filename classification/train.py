@@ -13,16 +13,9 @@ from timm.scheduler import create_scheduler
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from utils.data_loader import Resisc45Loader
-from utils.models import get_models
-from utils.models import get_optimizer_args
-from utils.models import prepare_model_and_load_ckpt
-from utils.models import save_checkpoint
-from utils.utils import cleanup_distributed
-from utils.utils import get_batch_sizes
-from utils.utils import init_distributed
-from utils.utils import parse_config
-from utils.utils import seed_everything
+from myrtle_vision.data_loader import Resisc45Loader
+from myrtle_vision.models import get_models, get_optimizer_args, prepare_model_and_load_ckpt, save_checkpoint
+from myrtle_vision.utils import cleanup_distributed, get_batch_sizes, init_distributed, parse_config, seed_everything
 
 
 def validation(val_loader, device, criterion, iteration, vit, distiller=None):

@@ -1,8 +1,8 @@
 import argparse
 
 import torch
-from quantize import QFormat
 from torchvision.models import resnet50
+from myrtle_vision.quantize import QFormat
 from myrtle_vision.utils import parse_config
 from myrtle_vision.distill import DistillableViT
 from myrtle_vision.distill import DistillWrapper

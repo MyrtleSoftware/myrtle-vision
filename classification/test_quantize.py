@@ -5,13 +5,13 @@ import tempfile
 
 import numpy as np
 import torch
-from quantize import QFormat
 from sklearn.metrics import classification_report
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from myrtle_vision.data_loader import Resisc45Loader
 from myrtle_vision.models import get_models
 from myrtle_vision.models import prepare_model_and_load_ckpt
+from myrtle_vision.quantize import QFormat
 from myrtle_vision.utils import get_label_list
 from myrtle_vision.utils import parse_config
 

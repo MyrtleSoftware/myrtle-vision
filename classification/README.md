@@ -54,8 +54,8 @@ This requires Python >=3.7 and we recommend using something like `venv` or
    ```bash
    $ pwd
    <...>/myrtle-vision/classification
-   $ tree Resisc45
-   Resisc45
+   $ tree NWPU-RESISC45
+   NWPU-RESISC45
    |-- images
    |   |-- airplane
    |   |   |-- airplane_001.jpg
@@ -79,7 +79,7 @@ This requires Python >=3.7 and we recommend using something like `venv` or
    filepaths of the images in that subset, e.g.
 
    ```
-   $ head Resisc45/val_imagepaths.txt
+   $ head NWPU-RESISC45/val_imagepaths.txt
    images/airplane/airplane_490.jpg
    images/airplane/airplane_491.jpg
    images/airplane/airplane_492.jpg

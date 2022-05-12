@@ -72,9 +72,6 @@ This requires Python >=3.7 and we recommend using something like `venv` or
    `-- val_imagepaths.txt
    ```
 
-   (See [here](https://www.tensorflow.org/datasets/catalog/resisc45) for
-   information and a download link for the Resisc45 dataset.)
-
    Each of the `_imagepaths.txt` files should contain a list of relative
    filepaths of the images in that subset, e.g.
 
@@ -101,6 +98,22 @@ This requires Python >=3.7 and we recommend using something like `venv` or
      "wetland": 44
    }
    ```
+
+### Resisc45
+   If using the Resisc45 dataset, see
+   [here](https://www.tensorflow.org/datasets/catalog/resisc45) for information
+   about the dataset and a download link for it. After downloading and
+   extracting the `.rar` archive (which can be done using the `unar` program),
+   you can use the provided script to prepare the dataset as above for you:
+
+   ```bash
+   $ pwd
+   <...>/myrtle-vision/classification
+   $ ls
+   <...> NWPU-RESISC45 <...>
+   $ python prepare_resisc45.py
+   ```
+
 
 ## Finetuning Teacher Model
    This step is only needed if you want to train a Vision Transformer using

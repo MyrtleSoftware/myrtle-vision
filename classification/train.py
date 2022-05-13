@@ -23,6 +23,9 @@ from utils.utils import get_batch_sizes
 from utils.utils import init_distributed
 from utils.utils import parse_config
 from utils.utils import seed_everything
+from utils.load_pretrained import pretrained_backbone_name
+from utils.load_pretrained import pretrained_backbone_exists
+from utils.load_pretrained import get_pretrained_backbone_weights
 
 
 def validation(val_loader, device, criterion, iteration, vit, distiller=None):
@@ -58,6 +61,7 @@ def train_deit(rank, num_gpus, config):
 
     train_config = config["train_config"]
     dist_config = config["dist_config"]
+    vit_config = config["vit_config"]
     # parse data config
     data_config = parse_config(config["data_config_path"])
 
@@ -69,6 +73,7 @@ def train_deit(rank, num_gpus, config):
     batch_size = train_config["local_batch_size"]
     global_batch_size = train_config["global_batch_size"]
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    load_pretrained = train_config["load_pretrained_backbone"]
 
     seed_everything(seed)
 
@@ -130,6 +135,25 @@ def train_deit(rank, num_gpus, config):
 
     # Instantiate models
     vit, distiller = get_models(config)
+
+    # Load pretrained backbone from timm if it exists
+    if load_pretrained:
+        backbone_name = pretrained_backbone_name(vit_config["vit_name"],
+                                                  vit_config["patch_size"],
+                                                  vit_config["image_size"]
+                                                  )
+        if pretrained_backbone_exists(backbone_name):
+
+            pretrained_state_dict = get_pretrained_backbone_weights(
+                                    backbone_name,
+                                    vit_config["num_classes"]
+                                    )
+            vit.load_state_dict(pretrained_state_dict)
+        else:
+            print(f"Could not find a pretrained backbone for model "\
+                    f"{backbone_name} on timm.")
+            sys.exit(-1)
+
     vit = vit.to(rank)
     if distiller is not None:
         distiller = distiller.to(rank)

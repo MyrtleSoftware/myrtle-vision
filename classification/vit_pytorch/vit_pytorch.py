@@ -68,7 +68,7 @@ class Attention(nn.Module):
         self.heads = heads
         self.scale = dim_head ** -0.5
 
-        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias=False)
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias=True)
         self.to_out = nn.Sequential(
             nn.Linear(inner_dim, dim),
             nn.Dropout(dropout),
@@ -178,6 +178,7 @@ class ViT(nn.Module):
         emb_dropout: float = 0.0,
         profile: bool = False,
         q_format: Optional[Union[str, QFormat]] = None,
+        load_pretrained_backbone: bool = False,
     ):
         super().__init__()
         assert (

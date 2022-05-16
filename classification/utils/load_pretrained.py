@@ -1,12 +1,5 @@
 import re
 
-#import torch
-#from quantize import QFormat
-#from torchvision.models import resnet50
-#from utils.utils import parse_config
-#from vit_pytorch.distill import DistillableViT
-#from vit_pytorch.distill import DistillWrapper
-#from vit_pytorch.vit_pytorch import ViT
 import timm
 
 
@@ -50,7 +43,6 @@ def layer_substitution_rules():
             (r'blocks.'+str(depth)+r'.mlp.fc2.bias', r'transformer.layers.'+str(depth)+r'.1.fn.fn.net.3.bias'),
         ]
         )
-
     return rules
 
 
@@ -60,14 +52,10 @@ def apply_rules(name, rules):
     return name
 
 
-def pretrained_backbone_name(vit_name,
-                             patch_size,
-                             image_size,
-                             num_classes=45
-                            ):
+def pretrained_backbone_name(vit_config):
     """
     """
-    model_name = vit_name+"_patch"+str(patch_size)+"_"+str(image_size)
+    model_name = vit_config["vit_name"]+"_patch"+str(vit_config["patch_size"])+"_"+str(vit_config["image_size"])
     return model_name
 
 
@@ -78,19 +66,15 @@ def pretrained_backbone_exists(backbone_name):
     return backbone_name in all_backbone_names
     
 
-def get_pretrained_backbone_weights(model_name,
-                                    num_classes=45
-                                    ):
+def get_pretrained_backbone_weights(model_name, vit_config):
     """
     """
 
     # Get the layer substitution rules
     rules = layer_substitution_rules()
 
+    num_classes = vit_config["num_classes"]
     timm_vit = timm.create_model(model_name, pretrained=True, num_classes=num_classes)
-    print(model_name)
-    print(rules)
-
     timm_vit.eval()
 
     pretrained_state_dict = {}
@@ -99,11 +83,10 @@ def get_pretrained_backbone_weights(model_name,
 
         new_key = apply_rules(key, rules)
         
-        print(key)
-        print(new_key)
-        
-        if new_key == 'patch_to_embedding.weight':
-            pretrained_state_dict[new_key] = timm_vit.state_dict()['patch_embed.proj.weight'].permute(0, 2, 3, 1).reshape(192, 768)
+        if new_key == "patch_to_embedding.weight":
+            embed_dim = vit_config["embed_dim"]
+            mlp_dim = vit_config["mlp_dim"]
+            pretrained_state_dict[new_key] = timm_vit.state_dict()[key].permute(0, 2, 3, 1).reshape(embed_dim, mlp_dim)
         else:
             pretrained_state_dict[new_key] = timm_vit.state_dict()[key]
     return pretrained_state_dict

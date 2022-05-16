@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import sys
 import signal
 from datetime import datetime
 
@@ -138,15 +139,12 @@ def train_deit(rank, num_gpus, config):
 
     # Load pretrained backbone from timm if it exists
     if load_pretrained:
-        backbone_name = pretrained_backbone_name(vit_config["vit_name"],
-                                                  vit_config["patch_size"],
-                                                  vit_config["image_size"]
-                                                  )
+        backbone_name = pretrained_backbone_name(vit_config)
         if pretrained_backbone_exists(backbone_name):
 
             pretrained_state_dict = get_pretrained_backbone_weights(
                                     backbone_name,
-                                    vit_config["num_classes"]
+                                    vit_config
                                     )
             vit.load_state_dict(pretrained_state_dict)
         else:

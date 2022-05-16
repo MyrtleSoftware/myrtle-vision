@@ -27,7 +27,8 @@
         "cooldown_epochs": 5,
         "patience_epochs": 5,
         "decay_rate": 0.1,
-        "distributed": true
+        "distributed": true,
+        "load_pretrained_backbone": true
     },
 
     "data_config_path": "data_configs/data_config.json",
@@ -38,6 +39,7 @@
     },
 
     "vit_config": {
+        "vit_name": "deit_base",
         "image_size": 224,
         "patch_size": 16,
         "embed_dim": 768,
@@ -46,7 +48,8 @@
         "mlp_dim": 3072,
         "dropout": 0.1,
         "emb_dropout": 0.1,
-        "q_format": "FP32"
+        "q_format": "FP32",
+        "num_classes": 45
     },
 
     "distiller_config": {

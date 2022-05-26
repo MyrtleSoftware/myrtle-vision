@@ -63,7 +63,7 @@ This requires Python >=3.7 and we recommend using something like `venv` or
    │   │   ...
    │   │   └── airplane_700.jpg
    ...
-   |   `-- wetland
+   |   └── wetland
    │       ├── wetland_001.jpg
    │       ...
    │       └── wetland_700.jpg
@@ -188,3 +188,12 @@ Post-Training Quantization.
    Note: make sure to set the `checkpoint_path` argument in the config file to
    the path to the trained checkpoint that will be used to evaluate the model
    accuracy.
+
+## ViT variants
+| Model | Layers | Heads |
+| :---  | :----: | :---: |
+| Tiny  |  12    |  3    |
+| Small |  12    |  6    |
+| Base  |  12    | 12    |
+| Large |  24    | 16    |
+| Huge  |  32    | 16    |

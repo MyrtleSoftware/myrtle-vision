@@ -57,20 +57,20 @@ This requires Python >=3.7 and we recommend using something like `venv` or
    <...>/myrtle-vision/classification
    $ tree NWPU-RESISC45
    NWPU-RESISC45
-   |-- images
-   |   |-- airplane
-   |   |   |-- airplane_001.jpg
-   |   |   ...
-   |   |   `-- airplane_700.jpg
+   ├── images
+   │   ├──airplane
+   │   │   ├── airplane_001.jpg
+   │   │   ...
+   │   │   └── airplane_700.jpg
    ...
-   |   `-- wetland
-   |       |-- wetland_001.jpg
-   |       ...
-   |       `-- wetland_700.jpg
-   |-- label_map.json
-   |-- test_imagepaths.txt
-   |-- train_imagepaths.txt
-   `-- val_imagepaths.txt
+   |   └── wetland
+   │       ├── wetland_001.jpg
+   │       ...
+   │       └── wetland_700.jpg
+   ├── label_map.json
+   ├── test_imagepaths.txt
+   ├── train_imagepaths.txt
+   └── val_imagepaths.txt
    ```
 
    Each of the `_imagepaths.txt` files should contain a list of relative
@@ -188,3 +188,12 @@ Post-Training Quantization.
    Note: make sure to set the `checkpoint_path` argument in the config file to
    the path to the trained checkpoint that will be used to evaluate the model
    accuracy.
+
+## ViT variants
+| Model | Layers | Heads |
+| :---  | :----: | :---: |
+| Tiny  |  12    |  3    |
+| Small |  12    |  6    |
+| Base  |  12    | 12    |
+| Large |  24    | 16    |
+| Huge  |  32    | 16    |

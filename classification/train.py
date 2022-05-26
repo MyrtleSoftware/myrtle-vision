@@ -1,8 +1,10 @@
 import argparse
 import json
 import os
+import sys
 import signal
 from datetime import datetime
+from shutil import copyfile
 
 import psutil
 import torch
@@ -11,6 +13,7 @@ import torch.multiprocessing as mp
 from timm.optim import create_optimizer
 from timm.scheduler import create_scheduler
 from torch.nn.parallel import DistributedDataParallel
+from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from utils.data_loader import Resisc45Loader
@@ -23,6 +26,9 @@ from utils.utils import get_batch_sizes
 from utils.utils import init_distributed
 from utils.utils import parse_config
 from utils.utils import seed_everything
+from utils.load_pretrained import pretrained_backbone_name
+from utils.load_pretrained import pretrained_backbone_exists
+from utils.load_pretrained import get_pretrained_backbone_weights
 
 
 def validation(val_loader, device, criterion, iteration, vit, distiller=None):
@@ -51,13 +57,14 @@ def validation(val_loader, device, criterion, iteration, vit, distiller=None):
     return total_val_loss, total_val_acc
 
 
-def train_deit(rank, num_gpus, config):
+def train_deit(rank, num_gpus, config, filename):
     torch.backends.cudnn.enabled = True
     # more consistent performance at cost of some nondeterminism
     torch.backends.cudnn.benchmark = True
 
     train_config = config["train_config"]
     dist_config = config["dist_config"]
+    vit_config = config["vit_config"]
     # parse data config
     data_config = parse_config(config["data_config_path"])
 
@@ -69,6 +76,7 @@ def train_deit(rank, num_gpus, config):
     batch_size = train_config["local_batch_size"]
     global_batch_size = train_config["global_batch_size"]
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    load_pretrained = train_config["load_pretrained_backbone"]
 
     seed_everything(seed)
 
@@ -93,6 +101,11 @@ def train_deit(rank, num_gpus, config):
             os.makedirs(output_directory)
             os.chmod(output_directory, 0o775)
         print("output directory:", output_directory)
+
+    # keep copy of config in the directory with the checkpoints
+    savedir = config["train_config"]["output_directory"]
+    savefile = args.config.split("/")[1]
+    copyfile(filename, savedir+"/"+savefile)
 
     # load train and validation sets
     trainset = Resisc45Loader(
@@ -130,6 +143,22 @@ def train_deit(rank, num_gpus, config):
 
     # Instantiate models
     vit, distiller = get_models(config)
+
+    # Load pretrained backbone from timm if it exists
+    if load_pretrained:
+        backbone_name = pretrained_backbone_name(vit_config)
+        if pretrained_backbone_exists(backbone_name):
+
+            pretrained_state_dict = get_pretrained_backbone_weights(
+                                    backbone_name,
+                                    vit_config
+                                    )
+            vit.load_state_dict(pretrained_state_dict)
+        else:
+            print(f"Could not find a pretrained backbone for model "\
+                    f"{backbone_name} on timm.")
+            sys.exit(-1)
+
     vit = vit.to(rank)
     if distiller is not None:
         distiller = distiller.to(rank)
@@ -158,6 +187,15 @@ def train_deit(rank, num_gpus, config):
         optimizer=optimizer,
         lr_scheduler=lr_scheduler,
     )
+
+    # Initialise logging of loss and accuracy
+    log_acc_path = f"{output_directory}/train_accuracy.log"
+    with open(log_acc_path, "w") as f: 
+        f.write(f"Epoch, loss, acc, val_loss, val_acc\n")
+
+    # Tracking model training with tensorboard
+    #
+    writer = SummaryWriter(f"{output_directory}/test_tensorboard")
 
     # Train loop
     vit.train()
@@ -276,6 +314,22 @@ def train_deit(rank, num_gpus, config):
                     f"val_loss : {epoch_last_val_loss:.4f} - "
                     f"val_acc: {epoch_last_val_accuracy:.4f}\n"
                 )
+                writer.add_scalar(tag="training_loss",
+                                  scalar_value = epoch_loss,
+                                  global_step = epoch)
+                writer.add_scalar(tag="training_accuracy",
+                                  scalar_value = epoch_accuracy,
+                                  global_step = epoch)
+                writer.add_scalar(tag="val_loss",
+                                  scalar_value = epoch_last_val_loss,
+                                  global_step = epoch)
+                writer.add_scalar(tag="val_accuracy",
+                                  scalar_value = epoch_last_val_accuracy,
+                                  global_step = epoch)
+
+                print_txt = f"{epoch}, {epoch_loss}, {epoch_accuracy}, {epoch_last_val_loss}, {epoch_last_val_accuracy}\n"
+                with open(log_acc_path, "a") as f: 
+                    f.write(print_txt)
     except KeyboardInterrupt:
         # Ctrl + C will trigger an exception here and in the master process;
         # let that handle logging a message
@@ -314,6 +368,7 @@ if __name__ == "__main__":
         "_%m_%d_%Y_%H_%M_%S"
     )
 
+
     num_gpus = torch.cuda.device_count()
     if config["train_config"]["distributed"]:
         if num_gpus <= 1:
@@ -333,11 +388,11 @@ if __name__ == "__main__":
             # Set up multiprocessing processes for each GPU
             mp.spawn(
                 train_deit,
-                args=(num_gpus, config),
+                args=(num_gpus, config, args.config),
                 nprocs=num_gpus,
                 join=True,
             )
         else:
-            train_deit(0, num_gpus, config)
+            train_deit(0, num_gpus, config, args.config)
     except KeyboardInterrupt:
         print("Ctrl-c pressed; cleaning up and ending training early...")

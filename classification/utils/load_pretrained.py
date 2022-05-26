@@ -86,7 +86,8 @@ def get_pretrained_backbone_weights(model_name, vit_config):
         if new_key == "patch_to_embedding.weight":
             embed_dim = vit_config["embed_dim"]
             mlp_dim = vit_config["mlp_dim"]
-            pretrained_state_dict[new_key] = timm_vit.state_dict()[key].permute(0, 2, 3, 1).reshape(embed_dim, mlp_dim)
+            patch_dim = vit_config["patch_size"]**2 * 3
+            pretrained_state_dict[new_key] = timm_vit.state_dict()[key].reshape(embed_dim, patch_dim)
         else:
             pretrained_state_dict[new_key] = timm_vit.state_dict()[key]
     return pretrained_state_dict

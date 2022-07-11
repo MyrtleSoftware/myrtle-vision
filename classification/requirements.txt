@@ -6,3 +6,4 @@ qtorch
 numpy
 scikit-learn
 tqdm
+tensorboard

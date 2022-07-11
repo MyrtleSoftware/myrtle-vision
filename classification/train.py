@@ -10,7 +10,7 @@ import psutil
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from timm.optim import create_optimizer
+from timm.optim import create_optimizer #timm.fastai
 from timm.scheduler import create_scheduler
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.tensorboard import SummaryWriter

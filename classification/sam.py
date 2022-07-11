@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 class SAMx(torch.optim.Optimizer):
     """TODO."""
@@ -96,12 +97,14 @@ class SAM(torch.optim.Optimizer):
         print(self.rho)
 
 class SAM_old(torch.optim.Optimizer):
-    def __init__(self, params, base_optimizer, rho=0.05, adaptive=False, **kwargs):
+    def __init__(self, params, base_optimizer, rho=0.05, alpha=0.5, GSAM=False, adaptive=False, **kwargs):
         assert rho >= 0.0, f"Invalid rho, should be non-negative: {rho}"
 
         defaults = dict(rho=rho, adaptive=adaptive, **kwargs)
         super(SAM_old, self).__init__(params, defaults)
-
+        
+        self.GSAM = GSAM
+        self.alpha = alpha
         self.base_optimizer = base_optimizer(self.param_groups, **kwargs)
         self.param_groups = self.base_optimizer.param_groups
         self.defaults.update(self.base_optimizer.defaults)
@@ -116,18 +119,26 @@ class SAM_old(torch.optim.Optimizer):
             for p in group["params"]:
                 if p.grad is None: continue
                 self.state[p]["old_p"] = p.data.clone()
+                self.state[p]["old_p_grad"] = p.grad.data.clone()
                 e_w = (torch.pow(p, 2) if group["adaptive"] else 1.0) * p.grad * scale.to(p)
                 p.add_(e_w)  # climb to the local maximum "w + e(w)"
-
+                #print(p)
         if zero_grad: self.zero_grad()
 
     @torch.no_grad()
-    def second_step(self, zero_grad=False):
-        """Unperturb weights and then update."""
+    def unperturb(self):
         for group in self.param_groups:
             for p in group["params"]:
                 if p.grad is None: continue
                 p.data = self.state[p]["old_p"]  # get back to "w" from "w + e(w)"
+
+    @torch.no_grad()
+    def second_step(self, zero_grad=False):
+        """Unperturb weights and then update.
+        If GSAM, decompose gradients before unperturbing weights."""
+        if self.GSAM:
+            self.__decompose_grad()
+        self.unperturb()
 
         self.base_optimizer.step()  # do the actual "sharpness-aware" update
 
@@ -157,3 +168,20 @@ class SAM_old(torch.optim.Optimizer):
     def load_state_dict(self, state_dict):
         super().load_state_dict(state_dict)
         self.base_optimizer.param_groups = self.param_groups
+
+    def __decompose_grad(self):
+        """Decompose gradient of unperturbed loss into directions parallel and
+        perpendicular to the gradients of the perturbed losses.
+        """
+        for group in self.param_groups:
+            for p in group['params']:
+                if p.grad is None: continue
+                old_grad = self.state[p]["old_p_grad"]
+                if old_grad is None: continue
+                a = torch.einsum(p.grad, old_grad)/torch.norm(p.grad)**2 #Find factor of component parallel to perturbed loss
+                perp = old_grad - a*p.grad #Component perpendicular to perturbed loss
+                norm_perp = perp / torch.norm(perp) #Normalise component
+                #print(p.grad.data)
+                print(self.alpha * norm_perp)
+                p.grad.data.add_(self.alpha * norm_perp)
+                #print(p.grad.data)

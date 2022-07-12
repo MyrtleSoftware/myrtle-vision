@@ -126,11 +126,12 @@ class SAM_old(torch.optim.Optimizer):
         if zero_grad: self.zero_grad()
 
     @torch.no_grad()
-    def unperturb(self):
+    def unperturb(self, zero_grad=False):
         for group in self.param_groups:
             for p in group["params"]:
                 if p.grad is None: continue
                 p.data = self.state[p]["old_p"]  # get back to "w" from "w + e(w)"
+        if zero_grad: self.zero_grad()
 
     @torch.no_grad()
     def second_step(self, zero_grad=False):
@@ -178,7 +179,7 @@ class SAM_old(torch.optim.Optimizer):
                 if p.grad is None: continue
                 old_grad = self.state[p]["old_p_grad"]
                 if old_grad is None: continue
-                a = torch.einsum(p.grad, old_grad)/torch.norm(p.grad)**2 #Find factor of component parallel to perturbed loss
+                a = torch.dot(p.grad, old_grad)/torch.norm(p.grad)**2 #Find factor of component parallel to perturbed loss
                 perp = old_grad - a*p.grad #Component perpendicular to perturbed loss
                 norm_perp = perp / torch.norm(perp) #Normalise component
                 #print(p.grad.data)

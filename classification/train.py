@@ -4,7 +4,6 @@ import os
 import sys
 import signal
 from datetime import datetime
-from shutil import copyfile
 
 import psutil
 import torch
@@ -13,7 +12,6 @@ import torch.multiprocessing as mp
 from timm.optim import create_optimizer
 from timm.scheduler import create_scheduler
 from torch.nn.parallel import DistributedDataParallel
-from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from utils.data_loader import Resisc45Loader
@@ -57,7 +55,7 @@ def validation(val_loader, device, criterion, iteration, vit, distiller=None):
     return total_val_loss, total_val_acc
 
 
-def train_deit(rank, num_gpus, config, filename):
+def train_deit(rank, num_gpus, config):
     torch.backends.cudnn.enabled = True
     # more consistent performance at cost of some nondeterminism
     torch.backends.cudnn.benchmark = True
@@ -101,11 +99,6 @@ def train_deit(rank, num_gpus, config, filename):
             os.makedirs(output_directory)
             os.chmod(output_directory, 0o775)
         print("output directory:", output_directory)
-
-    # keep copy of config in the directory with the checkpoints
-    savedir = config["train_config"]["output_directory"]
-    savefile = args.config.split("/")[1]
-    copyfile(filename, savedir+"/"+savefile)
 
     # load train and validation sets
     trainset = Resisc45Loader(
@@ -187,15 +180,6 @@ def train_deit(rank, num_gpus, config, filename):
         optimizer=optimizer,
         lr_scheduler=lr_scheduler,
     )
-
-    # Initialise logging of loss and accuracy
-    log_acc_path = f"{output_directory}/train_accuracy.log"
-    with open(log_acc_path, "w") as f: 
-        f.write(f"Epoch, loss, acc, val_loss, val_acc\n")
-
-    # Tracking model training with tensorboard
-    #
-    writer = SummaryWriter(f"{output_directory}/test_tensorboard")
 
     # Train loop
     vit.train()
@@ -314,22 +298,6 @@ def train_deit(rank, num_gpus, config, filename):
                     f"val_loss : {epoch_last_val_loss:.4f} - "
                     f"val_acc: {epoch_last_val_accuracy:.4f}\n"
                 )
-                writer.add_scalar(tag="training_loss",
-                                  scalar_value = epoch_loss,
-                                  global_step = epoch)
-                writer.add_scalar(tag="training_accuracy",
-                                  scalar_value = epoch_accuracy,
-                                  global_step = epoch)
-                writer.add_scalar(tag="val_loss",
-                                  scalar_value = epoch_last_val_loss,
-                                  global_step = epoch)
-                writer.add_scalar(tag="val_accuracy",
-                                  scalar_value = epoch_last_val_accuracy,
-                                  global_step = epoch)
-
-                print_txt = f"{epoch}, {epoch_loss}, {epoch_accuracy}, {epoch_last_val_loss}, {epoch_last_val_accuracy}\n"
-                with open(log_acc_path, "a") as f: 
-                    f.write(print_txt)
     except KeyboardInterrupt:
         # Ctrl + C will trigger an exception here and in the master process;
         # let that handle logging a message
@@ -368,7 +336,6 @@ if __name__ == "__main__":
         "_%m_%d_%Y_%H_%M_%S"
     )
 
-
     num_gpus = torch.cuda.device_count()
     if config["train_config"]["distributed"]:
         if num_gpus <= 1:
@@ -388,11 +355,11 @@ if __name__ == "__main__":
             # Set up multiprocessing processes for each GPU
             mp.spawn(
                 train_deit,
-                args=(num_gpus, config, args.config),
+                args=(num_gpus, config),
                 nprocs=num_gpus,
                 join=True,
             )
         else:
-            train_deit(0, num_gpus, config, args.config)
+            train_deit(0, num_gpus, config)
     except KeyboardInterrupt:
         print("Ctrl-c pressed; cleaning up and ending training early...")

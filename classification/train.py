@@ -17,16 +17,16 @@ from torch.utils.data.distributed import DistributedSampler
 from utils.data_loader import Resisc45Loader
 from utils.models import get_models
 from utils.models import get_optimizer_args
+from utils.models import get_pretrained_backbone_weights
 from utils.models import prepare_model_and_load_ckpt
+from utils.models import pretrained_backbone_exists
+from utils.models import pretrained_backbone_name
 from utils.models import save_checkpoint
 from utils.utils import cleanup_distributed
 from utils.utils import get_batch_sizes
 from utils.utils import init_distributed
 from utils.utils import parse_config
 from utils.utils import seed_everything
-from utils.load_pretrained import pretrained_backbone_name
-from utils.load_pretrained import pretrained_backbone_exists
-from utils.load_pretrained import get_pretrained_backbone_weights
 
 
 def validation(val_loader, device, criterion, iteration, vit, distiller=None):

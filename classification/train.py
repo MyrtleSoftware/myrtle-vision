@@ -17,10 +17,8 @@ from torch.utils.data.distributed import DistributedSampler
 from utils.data_loader import Resisc45Loader
 from utils.models import get_models
 from utils.models import get_optimizer_args
-from utils.models import get_pretrained_backbone_weights
 from utils.models import prepare_model_and_load_ckpt
-from utils.models import pretrained_backbone_exists
-from utils.models import pretrained_backbone_name
+from utils.models import rename_timm_state_dict
 from utils.models import save_checkpoint
 from utils.utils import cleanup_distributed
 from utils.utils import get_batch_sizes
@@ -74,7 +72,7 @@ def train_deit(rank, num_gpus, config):
     batch_size = train_config["local_batch_size"]
     global_batch_size = train_config["global_batch_size"]
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    load_pretrained = train_config["load_pretrained_backbone"]
+    pretrained_backbone = train_config["pretrained_backbone"]
 
     seed_everything(seed)
 
@@ -138,19 +136,8 @@ def train_deit(rank, num_gpus, config):
     vit, distiller = get_models(config)
 
     # Load pretrained backbone from timm if it exists
-    if load_pretrained:
-        backbone_name = pretrained_backbone_name(vit_config)
-        if pretrained_backbone_exists(backbone_name):
-
-            pretrained_state_dict = get_pretrained_backbone_weights(
-                                    backbone_name,
-                                    vit_config
-                                    )
-            vit.load_state_dict(pretrained_state_dict)
-        else:
-            print(f"Could not find a pretrained backbone for model "\
-                    f"{backbone_name} on timm.")
-            sys.exit(-1)
+    if pretrained_backbone is not None:
+        vit.load_state_dict(rename_timm_state_dict(pretrained_backbone, vit_config))
 
     vit = vit.to(rank)
     if distiller is not None:

@@ -28,7 +28,7 @@
         "patience_epochs": 5,
         "decay_rate": 0.1,
         "distributed": true,
-        "load_pretrained_backbone": true
+        "pretrained_backbone": "vit_base_patch16_224"
     },
 
     "data_config_path": "data_configs/data_config.json",

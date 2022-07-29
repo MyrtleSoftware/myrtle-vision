@@ -141,6 +141,8 @@ def load_checkpoint(
 
 
 def apply_rules(name, rules):
+    """Apply the first matching rule (regex substitution) to name.
+    """
     for pattern, replacement in rules:
         m = re.match(pattern, name)
         if m is not None:

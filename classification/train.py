@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import sys
 import signal
 from datetime import datetime
 
@@ -17,6 +18,7 @@ from utils.data_loader import Resisc45Loader
 from utils.models import get_models
 from utils.models import get_optimizer_args
 from utils.models import prepare_model_and_load_ckpt
+from utils.models import rename_timm_state_dict
 from utils.models import save_checkpoint
 from utils.utils import cleanup_distributed
 from utils.utils import get_batch_sizes
@@ -58,6 +60,7 @@ def train_deit(rank, num_gpus, config):
 
     train_config = config["train_config"]
     dist_config = config["dist_config"]
+    vit_config = config["vit_config"]
     # parse data config
     data_config = parse_config(config["data_config_path"])
 
@@ -69,6 +72,7 @@ def train_deit(rank, num_gpus, config):
     batch_size = train_config["local_batch_size"]
     global_batch_size = train_config["global_batch_size"]
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    pretrained_backbone = train_config["pretrained_backbone"]
 
     seed_everything(seed)
 
@@ -130,6 +134,17 @@ def train_deit(rank, num_gpus, config):
 
     # Instantiate models
     vit, distiller = get_models(config)
+
+    # Load pretrained backbone from timm if it exists
+    if pretrained_backbone is not None:
+        vit.load_state_dict(
+            rename_timm_state_dict(
+                pretrained_backbone,
+                vit_config,
+                data_config["number_of_classes"],
+            )
+        )
+
     vit = vit.to(rank)
     if distiller is not None:
         distiller = distiller.to(rank)

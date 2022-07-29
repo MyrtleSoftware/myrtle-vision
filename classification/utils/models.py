@@ -1,5 +1,7 @@
 import argparse
+import re
 
+import timm
 import torch
 from quantize import QFormat
 from torchvision.models import resnet50
@@ -136,3 +138,75 @@ def load_checkpoint(
     iteration = checkpoint["iteration"]
 
     return iteration
+
+
+def apply_rules(name, rules):
+    """Apply the first matching rule (regex substitution) to name.
+    """
+    for pattern, replacement in rules:
+        m = re.match(pattern, name)
+        if m is not None:
+            return re.sub(pattern, replacement, name)
+    return name
+
+
+def rename_timm_state_dict(timm_model_name, vit_config, num_classes):
+    """Returns a state dict with weights from a pretrained timm model.
+    """
+    rules = [
+        # Input
+        ## Positional embedding
+        (r"pos_embed", r"pos_embedding"),
+        ## Patch embedding
+        (r"patch_embed\.proj\.weight", r"patch_to_embedding.weight"),
+        (r"patch_embed\.proj\.bias", r"patch_to_embedding.bias"),
+
+        # Transformer layers
+        ## Self-attention
+        ### norm
+        (r"blocks\.([0-9]+)\.norm1\.weight", r"transformer.layers.\1.0.fn.norm.weight"),
+        (r"blocks\.([0-9]+)\.norm1\.bias", r"transformer.layers.\1.0.fn.norm.bias"),
+        ### to_qkv
+        (r"blocks\.([0-9]+)\.attn\.qkv\.weight", r"transformer.layers.\1.0.fn.fn.to_qkv.weight"),
+        (r"blocks\.([0-9]+)\.attn\.qkv\.bias", r"transformer.layers.\1.0.fn.fn.to_qkv.bias"),
+        ### proj
+        (r"blocks\.([0-9]+)\.attn\.proj\.weight", r"transformer.layers.\1.0.fn.fn.to_out.0.weight"),
+        (r"blocks\.([0-9]+)\.attn\.proj\.bias", r"transformer.layers.\1.0.fn.fn.to_out.0.bias"),
+
+        # Feedforward
+        ## norm
+        (r"blocks\.([0-9]+)\.norm2\.weight", r"transformer.layers.\1.1.fn.norm.weight"),
+        (r"blocks\.([0-9]+)\.norm2\.bias", r"transformer.layers.\1.1.fn.norm.bias"),
+        ## fc1
+        (r"blocks\.([0-9]+)\.mlp\.fc1\.weight", r"transformer.layers.\1.1.fn.fn.net.0.weight"),
+        (r"blocks\.([0-9]+)\.mlp\.fc1\.bias", r"transformer.layers.\1.1.fn.fn.net.0.bias"),
+        ## fc2
+        (r"blocks\.([0-9]+)\.mlp\.fc2\.weight", r"transformer.layers.\1.1.fn.fn.net.3.weight"),
+        (r"blocks\.([0-9]+)\.mlp\.fc2\.bias", r"transformer.layers.\1.1.fn.fn.net.3.bias"),
+
+        # Classifier head
+        ## norm
+        (r"norm\.weight", r"mlp_head.0.weight"),
+        (r"norm\.bias", r"mlp_head.0.bias"),
+        ## fc
+        (r"head\.weight", r"mlp_head.1.weight"),
+        (r"head\.bias", r"mlp_head.1.bias"),
+    ]
+
+    timm_vit = timm.create_model(timm_model_name, pretrained=True, num_classes=num_classes)
+
+    # timm state_dict with renamed keys
+    state_dict = {}
+    for key in timm_vit.state_dict():
+        new_key = apply_rules(key, rules)
+        # Special case for patch embedding which we implement as a Linear layer
+        # rather than a Conv2D.
+        if new_key == "patch_to_embedding.weight":
+            embed_dim = vit_config["embed_dim"]
+            mlp_dim = vit_config["mlp_dim"]
+            patch_dim = vit_config["patch_size"]**2 * 3
+            # (O,I,H,W) -> (O,(H,W,I))
+            state_dict[new_key] = timm_vit.state_dict()[key].permute(0, 2, 3, 1).reshape(embed_dim, patch_dim)
+        else:
+            state_dict[new_key] = timm_vit.state_dict()[key]
+    return state_dict

@@ -27,7 +27,8 @@
         "cooldown_epochs": 5,
         "patience_epochs": 5,
         "decay_rate": 0.1,
-        "distributed": true
+        "distributed": true,
+        "pretrained_backbone": "vit_base_patch16_224"
     },
 
     "data_config_path": "data_configs/data_config.json",
@@ -44,8 +45,8 @@
         "depth": 12,
         "heads": 12,
         "mlp_dim": 3072,
-        "dropout": 0.1,
-        "emb_dropout": 0.1,
+        "dropout": 0.0,
+        "emb_dropout": 0.0,
         "q_format": "FP32"
     }
 }

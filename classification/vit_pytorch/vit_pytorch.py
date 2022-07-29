@@ -178,7 +178,6 @@ class ViT(nn.Module):
         emb_dropout: float = 0.0,
         profile: bool = False,
         q_format: Optional[Union[str, QFormat]] = None,
-        load_pretrained_backbone: bool = False,
     ):
         super().__init__()
         assert (

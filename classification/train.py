@@ -137,7 +137,13 @@ def train_deit(rank, num_gpus, config):
 
     # Load pretrained backbone from timm if it exists
     if pretrained_backbone is not None:
-        vit.load_state_dict(rename_timm_state_dict(pretrained_backbone, vit_config))
+        vit.load_state_dict(
+            rename_timm_state_dict(
+                pretrained_backbone,
+                vit_config,
+                data_config["number_of_classes"],
+            )
+        )
 
     vit = vit.to(rank)
     if distiller is not None:

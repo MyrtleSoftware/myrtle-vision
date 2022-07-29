@@ -39,7 +39,6 @@
     },
 
     "vit_config": {
-        "vit_name": "deit_small",
         "image_size": 224,
         "patch_size": 16,
         "embed_dim": 384,
@@ -48,8 +47,7 @@
         "mlp_dim": 1536,
         "dropout": 0.0,
         "emb_dropout": 0.0,
-        "q_format": "FP32",
-        "num_classes": 45
+        "q_format": "FP32"
     },
 
     "distiller_config": {

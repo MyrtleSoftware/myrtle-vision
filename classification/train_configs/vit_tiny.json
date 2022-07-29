@@ -39,7 +39,6 @@
     },
 
     "vit_config": {
-        "vit_name": "vit_tiny",
         "image_size": 224,
         "patch_size": 16,
         "embed_dim": 192,
@@ -48,7 +47,6 @@
         "mlp_dim": 768,
         "dropout": 0.0,
         "emb_dropout": 0.0,
-        "q_format": "FP32",
-        "num_classes": 45
+        "q_format": "FP32"
     }
 }

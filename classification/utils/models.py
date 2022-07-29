@@ -147,7 +147,10 @@ def apply_rules(name, rules):
             return re.sub(pattern, replacement, name)
     return name
 
-def rename_timm_state_dict(timm_model_name, vit_config):
+
+def rename_timm_state_dict(timm_model_name, vit_config, num_classes):
+    """Returns a state dict with weights from a pretrained timm model.
+    """
     rules = [
         # Input
         ## Positional embedding
@@ -188,7 +191,6 @@ def rename_timm_state_dict(timm_model_name, vit_config):
         (r"head\.bias", r"mlp_head.1.bias"),
     ]
 
-    num_classes = vit_config["num_classes"]
     timm_vit = timm.create_model(timm_model_name, pretrained=True, num_classes=num_classes)
 
     # timm state_dict with renamed keys

@@ -6,3 +6,7 @@ psutil
 numpy
 scikit-learn
 tqdm
+wandb
+pynvml
+ninja
+transformers

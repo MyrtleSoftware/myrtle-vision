@@ -14,6 +14,8 @@ from timm.scheduler import create_scheduler
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
+from tqdm.auto import tqdm
+from transformers import AdamW
 from utils.data_loader import Resisc45Loader
 from utils.models import get_models
 from utils.models import get_optimizer_args
@@ -25,6 +27,7 @@ from utils.utils import get_batch_sizes
 from utils.utils import init_distributed
 from utils.utils import parse_config
 from utils.utils import seed_everything
+from sam import SAM
 
 
 def validation(val_loader, device, criterion, iteration, vit, distiller=None):
@@ -73,6 +76,9 @@ def train_deit(rank, num_gpus, config):
     global_batch_size = train_config["global_batch_size"]
     device = "cuda" if torch.cuda.is_available() else "cpu"
     pretrained_backbone = train_config["pretrained_backbone"]
+    sam = train_config["sam"]
+    rho = train_config["sam_rho"]
+    lr = train_config["lr"]
 
     seed_everything(seed)
 
@@ -160,7 +166,11 @@ def train_deit(rank, num_gpus, config):
     if distiller is not None:
         optimizer = create_optimizer(optimizer_args, distiller)
     else:
-        optimizer = create_optimizer(optimizer_args, vit)
+        if sam:
+            base_optimizer = AdamW
+            optimizer = SAM(vit.parameters(), base_optimizer, rho=rho, lr=lr)
+        else:
+            optimizer = create_optimizer(optimizer_args, vit)
     lr_scheduler, _ = create_scheduler(optimizer_args, optimizer)
     loss_scaler = torch.cuda.amp.GradScaler()
     # loss criterion used only when model trained without distillation and
@@ -186,6 +196,7 @@ def train_deit(rank, num_gpus, config):
         n_accum = 0
         epoch_last_val_loss = 0
         epoch_last_val_accuracy = 0
+        progress_bar = tqdm(range((epochs-epoch_offset)*len(train_loader)))
         # Train loop
         for epoch in range(epoch_offset, epochs):
             epoch_loss = 0
@@ -215,7 +226,7 @@ def train_deit(rank, num_gpus, config):
                     )
 
                 if (
-                    iteration % iters_per_val == 0
+                    iteration % len(train_loader) == 0
                     and n_accum == 0
                     and rank == 0
                 ):
@@ -251,36 +262,47 @@ def train_deit(rank, num_gpus, config):
                 output_labels = outputs.argmax(dim=1)
                 train_acc = (output_labels == train_labels).float().mean()
                 epoch_accuracy += train_acc / len(train_loader)
-
-                # is_second_order attribute is added by timm on one optimizer
-                # (adahessian)
-                loss_scaler.scale(train_loss).backward(
-                    create_graph=(
-                        hasattr(optimizer, "is_second_order")
-                        and optimizer.is_second_order
-                    )
-                )
-                if optimizer_args.clip_grad is not None:
-                    # unscale the gradients of optimizer's params in-place
-                    loss_scaler.unscale_(optimizer)
-                    torch.nn.utils.clip_grad_norm_(
-                        vit.parameters(), optimizer_args.clip_grad
-                    )
-
-                n_accum += 1
-
-                if n_accum == n_batch_accum:
-                    n_accum = 0
-                    loss_scaler.step(optimizer)
-                    loss_scaler.update()
-
+                
+                if sam:
+                    train_loss.backward() #Gradient of loss
+                    optimizer.first_step(zero_grad=True) #Perturb weights
+                    outputs = vit(train_imgs) #Outputs based on perturbed weights
+                    perturbed_loss = criterion(outputs, train_labels) #Loss with perturbed weights
+                    perturbed_loss.backward() #Gradient of perturbed loss
+                    optimizer.second_step(zero_grad=True) #Unperturb weights and updated weights based on perturbed losses
+                    optimizer.zero_grad() #Set gradients of optimized tensors to zero to prevent gradient accumulation
                     iteration += 1
-
-                    if rank == 0:
-                        print(
-                            f"Iteration {iteration}:\tloss={train_loss:.4f}"
-                            f"\tacc={train_acc:.4f}"
+                    progress_bar.update(1)
+                else:
+                    # is_second_order attribute is added by timm on one optimizer
+                    # (adahessian)
+                    loss_scaler.scale(train_loss).backward(
+                        create_graph=(
+                            hasattr(optimizer, "is_second_order")
+                            and optimizer.is_second_order
                         )
+                    )
+                    if optimizer_args.clip_grad is not None:
+                        # unscale the gradients of optimizer's params in-place
+                        loss_scaler.unscale_(optimizer)
+                        torch.nn.utils.clip_grad_norm_(
+                            vit.parameters(), optimizer_args.clip_grad
+                        )
+
+                    n_accum += 1
+
+                    if n_accum == n_batch_accum:
+                        n_accum = 0
+                        loss_scaler.step(optimizer)
+                        loss_scaler.update()
+
+                        iteration += 1
+                        progress_bar.update(1)
+                        #if rank == 0:
+                        #    print(
+                        #        f"Iteration {iteration}:\tloss={train_loss:.4f}"
+                        #        f"\tacc={train_acc:.4f}"
+                        #    )
 
             lr_scheduler.step(epoch)
 

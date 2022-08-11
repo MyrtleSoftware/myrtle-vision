@@ -1,7 +1,7 @@
 {
     "train_config": {
         "output_directory": "checkpoints_vit_tiny",
-        "checkpoint_path": "checkpoints_vit_tiny_08_11_2022_14_43_24/vit_000000",
+        "checkpoint_path": "",
         "epochs": 300,
         "local_batch_size": 32,
         "global_batch_size": 64,

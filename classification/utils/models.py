@@ -37,7 +37,7 @@ def get_models(config, profile=False):
         "dropout": vit_config["dropout"],
         "emb_dropout": vit_config["emb_dropout"],
         "profile": profile,
-        "prune": vit_config["prune"],
+        "apply_prune_mask": vit_config["apply_prune_mask"],
         "q_format": QFormat[vit_config["q_format"]],
     }
     if "distiller_config" in config:

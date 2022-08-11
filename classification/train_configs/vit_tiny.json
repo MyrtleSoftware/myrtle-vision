@@ -30,7 +30,9 @@
         "distributed": true,
         "pretrained_backbone": "vit_tiny_patch16_224",
         "sam": false,
-        "sam_rho": 0.05
+        "sam_rho": 0.05,
+        "total_prunes": 18,
+        "prune_freq": 0
     },
 
     "data_config_path": "data_configs/data_config.json",
@@ -50,6 +52,6 @@
         "dropout": 0.0,
         "emb_dropout": 0.0,
         "q_format": "FP32",
-        "prune": false
+        "apply_prune_mask": false
     }
 }

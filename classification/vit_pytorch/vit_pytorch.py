@@ -62,7 +62,7 @@ class Attention(nn.Module):
         heads: int = 8,
         dim_head: int = 64,
         dropout: float = 0.0,
-        prune: bool = False
+        apply_prune_mask: bool = False
     ):
         super().__init__()
         inner_dim = dim_head * heads
@@ -82,7 +82,7 @@ class Attention(nn.Module):
         self.attn_output = nn.Identity()
 
         self.mask = torch.ones(self.heads)
-        self.prune_heads = prune
+        self.apply_prune_mask = apply_prune_mask
 
     def forward(self, x: torch.Tensor):
         b_dim, n_dim, c_dim = x.shape
@@ -121,7 +121,7 @@ class Transformer(nn.Module):
         mlp_dim: int,
         dropout: float,
         profile: bool,
-        prune: bool = False
+        apply_prune_mask: bool = False
     ):
         super().__init__()
         # Create context managers when profiling model
@@ -149,7 +149,7 @@ class Transformer(nn.Module):
                                 heads=heads,
                                 dim_head=dim_head,
                                 dropout=dropout,
-                                prune=prune
+                                apply_prune_mask=apply_prune_mask
                             ),
                         )
                     ),
@@ -192,7 +192,7 @@ class ViT(nn.Module):
         dropout: float = 0.0,
         emb_dropout: float = 0.0,
         profile: bool = False,
-        prune: bool = False,
+        apply_prune_mask: bool = False,
         q_format: Optional[Union[str, QFormat]] = None,
     ):
         super().__init__()
@@ -237,7 +237,7 @@ class ViT(nn.Module):
             mlp_dim,
             dropout,
             profile,
-            prune
+            apply_prune_mask
         )
 
         self.pool = pool
@@ -316,4 +316,4 @@ class ViT(nn.Module):
         for layer in range(self.depth):
             for head in range(self.heads):
                 self.transformer.layers[layer][0].get_submodule("fn.fn").mask[head] = mask[head,layer]
-        print(self.get_mask())    
+        print(self.get_mask()) #Confirm mask has been set

@@ -3,37 +3,33 @@ import json
 import os
 import sys
 import signal
-import wandb
-import numpy as np
 from datetime import datetime
-from shutil import copyfile
 
 import psutil
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from timm.optim import create_optimizer #timm.fastai
+import numpy as np
+from sklearn.metrics import classification_report, accuracy_score
+from timm.optim import create_optimizer
 from timm.scheduler import create_scheduler
 from torch.nn.parallel import DistributedDataParallel
-from torch.utils.tensorboard import SummaryWriter
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from transformers import AdamW
 from tqdm.auto import tqdm
+from transformers import AdamW
 from utils.data_loader import Resisc45Loader
 from utils.models import get_models
 from utils.models import get_optimizer_args
 from utils.models import prepare_model_and_load_ckpt
+from utils.models import rename_timm_state_dict
 from utils.models import save_checkpoint
 from utils.utils import cleanup_distributed
 from utils.utils import get_batch_sizes
 from utils.utils import init_distributed
 from utils.utils import parse_config
 from utils.utils import seed_everything
-from utils.load_pretrained import pretrained_backbone_name
-from utils.load_pretrained import pretrained_backbone_exists
-from utils.load_pretrained import get_pretrained_backbone_weights
-from sam import SAM_old
+from sam import SAM
 from mixup import mixup_data, mixup_criterion
 
 def validation(val_loader, device, criterion, iteration, vit, distiller=None):
@@ -94,7 +90,7 @@ def prune_scores(vit, vit_config, train_config, data_loader):
     progress_bar = tqdm(range(len(data_loader)*(heads*depth+1)))
     #Accuracy for ViT before masking any heads, to find change in accuracy when masking heads
     base_acc = evaluate()
-    print(base_acc)
+    #print(base_acc)
 
     #Grid to contain changes in accuracy for masking of each head
     grid = np.zeros((heads, depth))
@@ -121,8 +117,86 @@ def prune_scores(vit, vit_config, train_config, data_loader):
                 vit.transformer.layers[layer][0].get_submodule("fn.fn").mask[head] = 1
     return grid
 
-def train_prune(rank, num_gpus, config, filename):
-    torch.cuda.empty_cache()
+def train_prune(rank, num_gpus, config):
+
+    def optimize(model, 
+    criterion, 
+    train_data, 
+    labels,
+    sam=True,
+    mixup_criterion=None, 
+    labels2=None,
+    mixup_lam=None,
+    distiller=None):
+        #If using mixup, we require a second set of labels,
+        #and a value for lambda (mixup variable)
+        if mixup_criterion is not None:
+            assert len(labels2) == len(labels)
+            assert mixup_lam is not None
+
+        nonlocal optimizer
+        nonlocal epoch_loss
+        nonlocal epoch_accuracy
+        nonlocal iteration
+        nonlocal progress_bar
+        nonlocal train_loader_len
+        nonlocal n_accum
+
+        outputs = model(train_data)
+
+        if mixup_criterion:
+            train_loss = mixup_criterion(criterion, outputs, labels, labels2, mixup_lam)
+        elif distiller:
+            train_loss = distiller(train_data, labels)
+        else:
+            train_loss = criterion(outputs, labels)
+        
+        #Calculate batch accuracy and accumulate in epoch accuracy
+        epoch_loss += train_loss / train_loader_len
+        output_labels = outputs.argmax(dim=1)
+        train_acc = (output_labels == labels).float().mean()
+        epoch_accuracy += train_acc / train_loader_len
+
+        if sam:
+            train_loss.backward() #Gradient of loss
+            optimizer.first_step(zero_grad=True) #Perturb weights
+            outputs = model(train_data) #Outputs based on perturbed weights
+            if mixup_criterion:
+                perturbed_loss = mixup_criterion(criterion, outputs, labels, labels2, mixup_lam)
+            else:
+                perturbed_loss = criterion(outputs, labels) #Loss with perturbed weights
+            perturbed_loss.backward()#Gradient of perturbed loss
+            optimizer.second_step(zero_grad=True) #Unperturb weights and updated weights based on perturbed losses
+            optimizer.zero_grad() #Set gradients of optimized tensors to zero to prevent gradient accumulation
+            iteration += 1
+            progress_bar.update(1)
+
+        else:
+            # is_second_order attribute is added by timm on one optimizer
+            # (adahessian)
+            loss_scaler.scale(train_loss).backward(
+                create_graph=(
+                    hasattr(optimizer, "is_second_order")
+                    and optimizer.is_second_order
+                )
+            )
+            if optimizer_args.clip_grad is not None:
+                # unscale the gradients of optimizer's params in-place
+                loss_scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(
+                    vit.parameters(), optimizer_args.clip_grad
+                )
+
+            n_accum += 1
+
+            if n_accum == n_batch_accum:
+                n_accum = 0
+                loss_scaler.step(optimizer)
+                loss_scaler.update()
+
+                iteration += 1
+                progress_bar.update(1)
+
     torch.backends.cudnn.enabled = True
     # more consistent performance at cost of some nondeterminism
     torch.backends.cudnn.benchmark = True
@@ -134,25 +208,25 @@ def train_prune(rank, num_gpus, config, filename):
     data_config = parse_config(config["data_config_path"])
 
     epochs = train_config["epochs"]
-    output_directory = train_config["output_directory"] + '_prune'
+    output_directory = "checkpoints/" + train_config["output_directory"]
     iters_per_checkpoint = train_config["iters_per_checkpoint"]
     iters_per_val = train_config["iters_per_val"]
     seed = train_config["seed"]
     batch_size = train_config["local_batch_size"]
     global_batch_size = train_config["global_batch_size"]
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    load_pretrained = train_config["load_pretrained_backbone"]
+    pretrained_backbone = train_config["pretrained_backbone"]
     sam = train_config["sam"]
-    rho = train_config["rho"]
+    rho = train_config["sam_rho"]
     lr = train_config["lr"]
-    mixup = data_config["mixup"]
-    mixup_alpha = data_config["mixup_alpha"]
-    wandb_name = train_config["wandb_name"]
 
     total_prunes = train_config["total_prunes"]
     prune_freq = train_config["prune_freq"]
     assert total_prunes >= 0
-    assert prune freq >= 0
+    assert prune_freq >= 0
+
+    mixup = data_config["mixup"]
+    mixup_alpha = data_config["mixup_alpha"]
 
     seed_everything(seed)
 
@@ -178,11 +252,6 @@ def train_prune(rank, num_gpus, config, filename):
             os.chmod(output_directory, 0o775)
         print("output directory:", output_directory)
 
-    # keep copy of config in the directory with the checkpoints
-    #savedir = config["train_config"]["output_directory"]
-    #savefile = args.config.split("/")[1]
-    #copyfile(filename, savedir+"/"+savefile)
-
     # load train and validation sets
     trainset = Resisc45Loader(
         mode="train",
@@ -198,7 +267,6 @@ def train_prune(rank, num_gpus, config, filename):
         label_map_path=data_config["label_map"],
         transform_config=data_config["transform_ops_val"],
     )
-    pruneset = Subset(valset, range(639))
 
     train_sampler = DistributedSampler(trainset) if num_gpus > 1 else None
     train_loader = DataLoader(
@@ -217,31 +285,19 @@ def train_prune(rank, num_gpus, config, filename):
         pin_memory=False,
         drop_last=train_config["drop_last_batch"],
     )
-    prune_loader = DataLoader(
-        pruneset,
-        num_workers=1,
-        batch_size=batch_size,
-        pin_memory=False,
-        drop_last=train_config["drop_last_batch"],
-    )
 
     # Instantiate models
     vit, distiller = get_models(config)
 
     # Load pretrained backbone from timm if it exists
-    if load_pretrained:
-        backbone_name = pretrained_backbone_name(vit_config)
-        if pretrained_backbone_exists(backbone_name):
-
-            pretrained_state_dict = get_pretrained_backbone_weights(
-                                    backbone_name,
-                                    vit_config
-                                    )
-            vit.load_state_dict(pretrained_state_dict)
-        else:
-            print(f"Could not find a pretrained backbone for model "\
-                    f"{backbone_name} on timm.")
-            sys.exit(-1)
+    if pretrained_backbone is not None:
+        vit.load_state_dict(
+            rename_timm_state_dict(
+                pretrained_backbone,
+                vit_config,
+                data_config["number_of_classes"],
+            )
+        )
 
     vit = vit.to(rank)
     if distiller is not None:
@@ -252,6 +308,7 @@ def train_prune(rank, num_gpus, config, filename):
     prune_flag = False
 
     if prune_freq == 0: #Prune all heads at once before training
+        print("Pruning")
         grid = prune_scores(vit, vit_config, train_config, val_loader) #Get prune importance scores (change in acc)
         sorted_grid = -np.sort(-grid.flatten()) #Sort scores (most positive changes -> most negative change)
         while num_prunes < total_prunes:
@@ -284,7 +341,7 @@ def train_prune(rank, num_gpus, config, filename):
     else:
         if sam:
             base_optimizer = AdamW
-            optimizer = SAM_old(vit.parameters(), base_optimizer, rho=rho, lr=lr)
+            optimizer = SAM(vit.parameters(), base_optimizer, rho=rho, lr=lr)
         else:
             optimizer = create_optimizer(optimizer_args, vit)
     lr_scheduler, _ = create_scheduler(optimizer_args, optimizer)
@@ -300,16 +357,7 @@ def train_prune(rank, num_gpus, config, filename):
         lr_scheduler=lr_scheduler,
     )
 
-    # Initialise logging of loss and accuracy
-    log_acc_path = f"{output_directory}/train_accuracy.log"
-    with open(log_acc_path, "w") as f: 
-        f.write(f"Epoch, loss, acc, val_loss, val_acc\n")
-
-    # Tracking model training with tensorboard
-    #
-    writer = SummaryWriter(f"{output_directory}/test_tensorboard")
-
-    #Train
+    # Train loop
     vit.train()
     epoch_offset = max(
         0, int(batch_size * num_gpus * iteration / len(trainset))
@@ -321,16 +369,14 @@ def train_prune(rank, num_gpus, config, filename):
         n_accum = 0
         epoch_last_val_loss = 0
         epoch_last_val_accuracy = 0
-        progress_bar = tqdm(range(epochs*len(train_loader)))
-        if wandb_name: wandb.init(project="vit_SAM", name=wandb_name)
-        #print(vit.get_mask())
-
+        progress_bar = tqdm(range((epochs-epoch_offset)*len(train_loader)))
+        train_loader_len = len(train_loader)
         # Train loop
         for epoch in range(epoch_offset, epochs):
-
             if prune_freq != 0:
                 if num_prunes < total_prunes: #Maximum number of heads to prune
                     if epoch % prune_freq == 0: #Pruning frequency
+                        print("Pruning")
                         #Get change in accuracy for pruning of each head
                         grid = prune_scores(vit, vit_config, train_config, val_loader)
                         vit.train() #Put model back into training state
@@ -348,7 +394,7 @@ def train_prune(rank, num_gpus, config, filename):
                                 #If there is more than one unpruned head - don't want to go below one head in a layer
                                 if torch.count_nonzero(mask) > 1:
                                     #Prune head
-                                    list(vit.transformer.layers[layer][0].get_submodule("fn.fn").parameters())[0].data[head] = 0
+                                    #list(vit.transformer.layers[layer][0].get_submodule("fn.fn").parameters())[0].data[head] = 0 If we make mask a model param
                                     vit.transformer.layers[layer_index][0].get_submodule("fn.fn").mask[head_index] = 0
                                     print('Change in accuracy: ' + str(sorted_val) + '%')
                                     print('Layer: ', layer_index)
@@ -369,6 +415,21 @@ def train_prune(rank, num_gpus, config, filename):
             vit.train()
             epoch_loss = 0
             epoch_accuracy = 0
+
+            # run validation
+            torch.cuda.empty_cache()
+            model_to_eval = vit.module if num_gpus > 1 else vit
+            distiller_to_eval = distiller
+            if num_gpus > 1 and distiller is not None:
+                distiller_to_eval = distiller.module
+            epoch_last_val_loss, epoch_last_val_accuracy = validation(
+                val_loader=val_loader,
+                device=device,
+                criterion=criterion,
+                iteration=iteration,
+                vit=model_to_eval,
+                distiller=distiller_to_eval,
+            )
 
             if num_gpus > 1:
                 # Epoch number is used as a seed for random sampling in
@@ -393,26 +454,6 @@ def train_prune(rank, num_gpus, config, filename):
                         filepath=checkpoint_path,
                     )
 
-                if (
-                    iteration % iters_per_val == 0
-                    and n_accum == 0
-                    and rank == 0
-                ):
-                    # run validation
-                    torch.cuda.empty_cache()
-                    model_to_eval = vit.module if num_gpus > 1 else vit
-                    distiller_to_eval = distiller
-                    if num_gpus > 1 and distiller is not None:
-                        distiller_to_eval = distiller.module
-                    epoch_last_val_loss, epoch_last_val_accuracy = validation(
-                        val_loader=val_loader,
-                        device=device,
-                        criterion=criterion,
-                        iteration=iteration,
-                        vit=model_to_eval,
-                        distiller=distiller_to_eval,
-                    )
-
                 if n_accum == 0:
                     vit.zero_grad()
 
@@ -422,81 +463,21 @@ def train_prune(rank, num_gpus, config, filename):
                 if mixup:
                     mixed_inputs, targets_a, targets_b, lam = mixup_data(train_imgs, 
                                                         train_labels, alpha=mixup_alpha)
-                    outputs = vit(mixed_inputs)
-                    train_loss = mixup_criterion(criterion, outputs, targets_a, targets_b, lam)
-                    if wandb_name: wandb.log({"loss": train_loss})
-                    epoch_loss += train_loss / len(train_loader)
-                    # calculate batch accuracy and accumulate in epoch accuracy
-                    output_labels = outputs.argmax(dim=1)
-                    train_acc = (output_labels == train_labels).float().mean()
-                    epoch_accuracy += train_acc / len(train_loader)
-
-                    if sam:
-                        train_loss.backward()
-                        optimizer.first_step(zero_grad=True)
-                        outputs = vit(mixed_inputs)
-                        perturbed_loss = mixup_criterion(criterion, outputs, targets_a, targets_b, lam)
-                        perturbed_loss.backward()
-                        optimizer.second_step(zero_grad=True) #Unperturb weights and updated weights based on perturbed losses
-                        optimizer.zero_grad() #Set gradients of optimized tensors to zero to prevent gradient accumulation
-                        iteration += 1
-                        progress_bar.update(1)
+                    optimize(model=vit,
+                    criterion=criterion,
+                    train_data=mixed_inputs,
+                    labels=targets_a,
+                    sam=sam,
+                    mixup_criterion=mixup_criterion,
+                    labels2 = targets_b,
+                    mixup_lam=lam)
                 else:
-                    outputs = vit(train_imgs)
-                    # calculate batch loss and accumulate in epoch loss
-                    if distiller is not None:
-                        train_loss = distiller(train_imgs, train_labels)
-                    else:
-                        train_loss = criterion(outputs, train_labels)
-                    if wandb_name: wandb.log({"loss": train_loss})
-                    epoch_loss += train_loss / len(train_loader)
-                    # calculate batch accuracy and accumulate in epoch accuracy
-                    output_labels = outputs.argmax(dim=1)
-                    train_acc = (output_labels == train_labels).float().mean()
-                    epoch_accuracy += train_acc / len(train_loader)
+                    optimize(model=vit,
+                    criterion=criterion,
+                    train_data=train_imgs,
+                    labels=train_labels,
+                    sam=sam)
 
-                    if sam:
-                        train_loss.backward() #Gradient of loss
-                        optimizer.first_step(zero_grad=True) #Perturb weights
-                        outputs = vit(train_imgs) #Outputs based on perturbed weights
-                        perturbed_loss = criterion(outputs, train_labels) #Loss with perturbed weights
-                        perturbed_loss.backward() #Gradient of perturbed loss
-                        optimizer.second_step(zero_grad=True) #Unperturb weights and updated weights based on perturbed losses
-                        optimizer.zero_grad() #Set gradients of optimized tensors to zero to prevent gradient accumulation
-                        iteration += 1
-                        progress_bar.update(1)
-                    else:
-                        # is_second_order attribute is added by timm on one optimizer
-                        # (adahessian)
-                        loss_scaler.scale(train_loss).backward(
-                            create_graph=(
-                                hasattr(optimizer, "is_second_order")
-                                and optimizer.is_second_order
-                            )
-                        )
-                        if optimizer_args.clip_grad is not None:
-                            # unscale the gradients of optimizer's params in-place
-                            loss_scaler.unscale_(optimizer)
-                            torch.nn.utils.clip_grad_norm_(
-                                vit.parameters(), optimizer_args.clip_grad
-                            )
-
-                        n_accum += 1
-
-                        if n_accum == n_batch_accum:
-                            n_accum = 0
-                            loss_scaler.step(optimizer)
-                            loss_scaler.update()
-
-                            iteration += 1
-
-                            if rank == 0:
-                                print(
-                                    f"Iteration {iteration}:\tloss={train_loss:.4f}"
-                                    f"\tacc={train_acc:.4f}"
-                                )
-                torch.cuda.empty_cache()
-            if wandb_name: wandb.log({"accuracy": epoch_last_val_accuracy})
             lr_scheduler.step(epoch)
 
             if rank == 0:
@@ -506,22 +487,6 @@ def train_prune(rank, num_gpus, config, filename):
                     f"val_loss : {epoch_last_val_loss:.4f} - "
                     f"val_acc: {epoch_last_val_accuracy:.4f}\n"
                 )
-                writer.add_scalar(tag="training_loss",
-                                  scalar_value = epoch_loss,
-                                  global_step = epoch)
-                writer.add_scalar(tag="training_accuracy",
-                                  scalar_value = epoch_accuracy,
-                                  global_step = epoch)
-                writer.add_scalar(tag="val_loss",
-                                  scalar_value = epoch_last_val_loss,
-                                  global_step = epoch)
-                writer.add_scalar(tag="val_accuracy",
-                                  scalar_value = epoch_last_val_accuracy,
-                                  global_step = epoch)
-
-                print_txt = f"{epoch}, {epoch_loss}, {epoch_accuracy}, {epoch_last_val_loss}, {epoch_last_val_accuracy}\n"
-                with open(log_acc_path, "a") as f: 
-                    f.write(print_txt)
     except KeyboardInterrupt:
         # Ctrl + C will trigger an exception here and in the master process;
         # let that handle logging a message
@@ -530,8 +495,6 @@ def train_prune(rank, num_gpus, config, filename):
             children = current_process.children(recursive=False)
             for child in children:
                 os.kill(child.pid, signal.SIGINT)
-            mask = vit.get_mask
-            np.save(output_directory+'/prune_mask', mask)
         pass
 
     if rank == 0:
@@ -542,10 +505,7 @@ def train_prune(rank, num_gpus, config, filename):
     # Cleanup distributed processes
     if num_gpus > 1:
         cleanup_distributed()
-    mask = vit.get_mask()
-    print("Final mask:", mask)
-    if wandb_name: wandb.finish()
-    np.save(output_directory+'/prune_mask', mask)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -564,7 +524,6 @@ if __name__ == "__main__":
     config["train_config"]["output_directory"] += datetime.now().strftime(
         "_%m_%d_%Y_%H_%M_%S"
     )
-
 
     num_gpus = torch.cuda.device_count()
     if config["train_config"]["distributed"]:
@@ -585,11 +544,11 @@ if __name__ == "__main__":
             # Set up multiprocessing processes for each GPU
             mp.spawn(
                 train_prune,
-                args=(num_gpus, config, args.config),
+                args=(num_gpus, config),
                 nprocs=num_gpus,
                 join=True,
             )
         else:
-            train_prune(0, num_gpus, config, args.config)
+            train_prune(0, num_gpus, config)
     except KeyboardInterrupt:
         print("Ctrl-c pressed; cleaning up and ending training early...")

@@ -285,6 +285,21 @@ def train_deit(rank, num_gpus, config):
             epoch_loss = 0
             epoch_accuracy = 0
 
+            # run validation
+            torch.cuda.empty_cache()
+            model_to_eval = vit.module if num_gpus > 1 else vit
+            distiller_to_eval = distiller
+            if num_gpus > 1 and distiller is not None:
+                distiller_to_eval = distiller.module
+            epoch_last_val_loss, epoch_last_val_accuracy = validation(
+                val_loader=val_loader,
+                device=device,
+                criterion=criterion,
+                iteration=iteration,
+                vit=model_to_eval,
+                distiller=distiller_to_eval,
+            )
+
             if num_gpus > 1:
                 # Epoch number is used as a seed for random sampling in
                 # `train_sampler` so must set manually to make sure the batch
@@ -306,26 +321,6 @@ def train_deit(rank, num_gpus, config):
                         lr_scheduler=lr_scheduler,
                         iteration=iteration,
                         filepath=checkpoint_path,
-                    )
-
-                if (
-                    iteration % len(train_loader) == 0
-                    and n_accum == 0
-                    and rank == 0
-                ):
-                    # run validation
-                    torch.cuda.empty_cache()
-                    model_to_eval = vit.module if num_gpus > 1 else vit
-                    distiller_to_eval = distiller
-                    if num_gpus > 1 and distiller is not None:
-                        distiller_to_eval = distiller.module
-                    epoch_last_val_loss, epoch_last_val_accuracy = validation(
-                        val_loader=val_loader,
-                        device=device,
-                        criterion=criterion,
-                        iteration=iteration,
-                        vit=model_to_eval,
-                        distiller=distiller_to_eval,
                     )
 
                 if n_accum == 0:

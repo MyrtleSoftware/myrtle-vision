@@ -9,6 +9,7 @@ from quantize import QFormat
 from torch import nn
 from torch.quantization import DeQuantStub
 from torch.quantization import QuantStub
+import numpy as np
 
 MIN_NUM_PATCHES = 16
 
@@ -91,7 +92,7 @@ class Attention(nn.Module):
             b_dim, n_dim, 3, self.heads, c_dim // self.heads
         ).permute(2, 0, 3, 1, 4)
 
-        if self.prune_heads:
+        if self.apply_prune_mask:
             qkv = self.mask_heads(qkv)
 
         q, k, v = qkv[0], qkv[1], qkv[2]
@@ -258,6 +259,8 @@ class ViT(nn.Module):
         self.quantizer.prepare_qat(
             q_format if q_format is not None else QFormat.FP32
         )
+        self.heads = heads
+        self.depth = depth
 
     def forward(self, img: torch.Tensor):
         b_dim, c_dim, h_dim, w_dim = img.shape

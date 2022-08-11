@@ -147,7 +147,7 @@ def train_deit(rank, num_gpus, config):
     data_config = parse_config(config["data_config_path"])
 
     epochs = train_config["epochs"]
-    output_directory = train_config["output_directory"]
+    output_directory = "checkpoints/" + train_config["output_directory"]
     iters_per_checkpoint = train_config["iters_per_checkpoint"]
     iters_per_val = train_config["iters_per_val"]
     seed = train_config["seed"]

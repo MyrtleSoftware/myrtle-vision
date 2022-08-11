@@ -38,7 +38,7 @@ def test_deit(config):
     test_loader = DataLoader(
         testset,
         num_workers=1,
-        batch_size=train_config["local_batch_size"],
+        batch_size=1,#train_config["local_batch_size"],
         pin_memory=False,
         drop_last=train_config["drop_last_batch"],
     )

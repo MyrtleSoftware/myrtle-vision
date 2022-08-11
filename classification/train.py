@@ -28,7 +28,7 @@ from utils.utils import init_distributed
 from utils.utils import parse_config
 from utils.utils import seed_everything
 from sam import SAM
-
+from mixup import mixup_data, mixup_criterion
 
 def validation(val_loader, device, criterion, iteration, vit, distiller=None):
     total_val_loss = 0
@@ -57,6 +57,85 @@ def validation(val_loader, device, criterion, iteration, vit, distiller=None):
 
 
 def train_deit(rank, num_gpus, config):
+
+    def optimize(model, 
+    criterion, 
+    train_data, 
+    labels,
+    sam=True,
+    mixup_criterion=None, 
+    labels2=None,
+    mixup_lam=None,
+    distiller=None):
+        #If using mixup, we require a second set of labels,
+        #and a value for lambda (mixup variable)
+        if mixup_criterion is not None:
+            assert len(labels2) == len(labels)
+            assert mixup_lam is not None
+
+        nonlocal optimizer
+        nonlocal epoch_loss
+        nonlocal epoch_accuracy
+        nonlocal iteration
+        nonlocal progress_bar
+        nonlocal train_loader_len
+        nonlocal n_accum
+
+        outputs = model(train_data)
+
+        if mixup_criterion:
+            train_loss = mixup_criterion(criterion, outputs, labels, labels2, mixup_lam)
+        elif distiller:
+            train_loss = distiller(train_data, labels)
+        else:
+            train_loss = criterion(outputs, labels)
+        
+        #Calculate batch accuracy and accumulate in epoch accuracy
+        epoch_loss += train_loss / train_loader_len
+        output_labels = outputs.argmax(dim=1)
+        train_acc = (output_labels == labels).float().mean()
+        epoch_accuracy += train_acc / train_loader_len
+
+        if sam:
+            train_loss.backward() #Gradient of loss
+            optimizer.first_step(zero_grad=True) #Perturb weights
+            outputs = model(train_data) #Outputs based on perturbed weights
+            if mixup_criterion:
+                perturbed_loss = mixup_criterion(criterion, outputs, labels, labels2, mixup_lam)
+            else:
+                perturbed_loss = criterion(outputs, labels) #Loss with perturbed weights
+            perturbed_loss.backward()#Gradient of perturbed loss
+            optimizer.second_step(zero_grad=True) #Unperturb weights and updated weights based on perturbed losses
+            optimizer.zero_grad() #Set gradients of optimized tensors to zero to prevent gradient accumulation
+            iteration += 1
+            progress_bar.update(1)
+
+        else:
+            # is_second_order attribute is added by timm on one optimizer
+            # (adahessian)
+            loss_scaler.scale(train_loss).backward(
+                create_graph=(
+                    hasattr(optimizer, "is_second_order")
+                    and optimizer.is_second_order
+                )
+            )
+            if optimizer_args.clip_grad is not None:
+                # unscale the gradients of optimizer's params in-place
+                loss_scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(
+                    vit.parameters(), optimizer_args.clip_grad
+                )
+
+            n_accum += 1
+
+            if n_accum == n_batch_accum:
+                n_accum = 0
+                loss_scaler.step(optimizer)
+                loss_scaler.update()
+
+                iteration += 1
+                progress_bar.update(1)
+
     torch.backends.cudnn.enabled = True
     # more consistent performance at cost of some nondeterminism
     torch.backends.cudnn.benchmark = True
@@ -79,6 +158,9 @@ def train_deit(rank, num_gpus, config):
     sam = train_config["sam"]
     rho = train_config["sam_rho"]
     lr = train_config["lr"]
+
+    mixup = data_config["mixup"]
+    mixup_alpha = data_config["mixup_alpha"]
 
     seed_everything(seed)
 
@@ -197,6 +279,7 @@ def train_deit(rank, num_gpus, config):
         epoch_last_val_loss = 0
         epoch_last_val_accuracy = 0
         progress_bar = tqdm(range((epochs-epoch_offset)*len(train_loader)))
+        train_loader_len = len(train_loader)
         # Train loop
         for epoch in range(epoch_offset, epochs):
             epoch_loss = 0
@@ -251,58 +334,23 @@ def train_deit(rank, num_gpus, config):
                 train_imgs = train_imgs.to(device)
                 train_labels = train_labels.to(device)
 
-                outputs = vit(train_imgs)
-                # calculate batch loss and accumulate in epoch loss
-                if distiller is not None:
-                    train_loss = distiller(train_imgs, train_labels)
+                if mixup:
+                    mixed_inputs, targets_a, targets_b, lam = mixup_data(train_imgs, 
+                                                        train_labels, alpha=mixup_alpha)
+                    optimize(model=vit,
+                    criterion=criterion,
+                    train_data=mixed_inputs,
+                    labels=targets_a,
+                    sam=sam,
+                    mixup_criterion=mixup_criterion,
+                    labels2 = targets_b,
+                    mixup_lam=lam)
                 else:
-                    train_loss = criterion(outputs, train_labels)
-                epoch_loss += train_loss / len(train_loader)
-                # calculate batch accuracy and accumulate in epoch accuracy
-                output_labels = outputs.argmax(dim=1)
-                train_acc = (output_labels == train_labels).float().mean()
-                epoch_accuracy += train_acc / len(train_loader)
-                
-                if sam:
-                    train_loss.backward() #Gradient of loss
-                    optimizer.first_step(zero_grad=True) #Perturb weights
-                    outputs = vit(train_imgs) #Outputs based on perturbed weights
-                    perturbed_loss = criterion(outputs, train_labels) #Loss with perturbed weights
-                    perturbed_loss.backward() #Gradient of perturbed loss
-                    optimizer.second_step(zero_grad=True) #Unperturb weights and updated weights based on perturbed losses
-                    optimizer.zero_grad() #Set gradients of optimized tensors to zero to prevent gradient accumulation
-                    iteration += 1
-                    progress_bar.update(1)
-                else:
-                    # is_second_order attribute is added by timm on one optimizer
-                    # (adahessian)
-                    loss_scaler.scale(train_loss).backward(
-                        create_graph=(
-                            hasattr(optimizer, "is_second_order")
-                            and optimizer.is_second_order
-                        )
-                    )
-                    if optimizer_args.clip_grad is not None:
-                        # unscale the gradients of optimizer's params in-place
-                        loss_scaler.unscale_(optimizer)
-                        torch.nn.utils.clip_grad_norm_(
-                            vit.parameters(), optimizer_args.clip_grad
-                        )
-
-                    n_accum += 1
-
-                    if n_accum == n_batch_accum:
-                        n_accum = 0
-                        loss_scaler.step(optimizer)
-                        loss_scaler.update()
-
-                        iteration += 1
-                        progress_bar.update(1)
-                        #if rank == 0:
-                        #    print(
-                        #        f"Iteration {iteration}:\tloss={train_loss:.4f}"
-                        #        f"\tacc={train_acc:.4f}"
-                        #    )
+                    optimize(model=vit,
+                    criterion=criterion,
+                    train_data=train_imgs,
+                    labels=train_labels,
+                    sam=sam)
 
             lr_scheduler.step(epoch)
 

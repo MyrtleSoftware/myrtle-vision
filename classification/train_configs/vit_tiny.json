@@ -29,7 +29,7 @@
         "decay_rate": 0.1,
         "distributed": true,
         "pretrained_backbone": "vit_tiny_patch16_224",
-        "sam": true,
+        "sam": false,
         "sam_rho": 0.05
     },
 

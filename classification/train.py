@@ -14,17 +14,17 @@ from timm.scheduler import create_scheduler
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from utils.data_loader import Resisc45Loader
-from utils.models import get_models
-from utils.models import get_optimizer_args
-from utils.models import prepare_model_and_load_ckpt
-from utils.models import rename_timm_state_dict
-from utils.models import save_checkpoint
-from utils.utils import cleanup_distributed
-from utils.utils import get_batch_sizes
-from utils.utils import init_distributed
-from utils.utils import parse_config
-from utils.utils import seed_everything
+from myrtle_vision.utils.data_loader import Resisc45Loader
+from myrtle_vision.utils.models import get_models
+from myrtle_vision.utils.models import get_optimizer_args
+from myrtle_vision.utils.models import prepare_model_and_load_ckpt
+from myrtle_vision.utils.models import rename_timm_state_dict
+from myrtle_vision.utils.models import save_checkpoint
+from myrtle_vision.utils.utils import cleanup_distributed
+from myrtle_vision.utils.utils import get_batch_sizes
+from myrtle_vision.utils.utils import init_distributed
+from myrtle_vision.utils.utils import parse_config
+from myrtle_vision.utils.utils import seed_everything
 
 
 def validation(val_loader, device, criterion, iteration, vit, distiller=None):

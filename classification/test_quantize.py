@@ -5,15 +5,15 @@ import tempfile
 
 import numpy as np
 import torch
-from quantize import QFormat
 from sklearn.metrics import classification_report
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from utils.data_loader import Resisc45Loader
-from utils.models import get_models
-from utils.models import prepare_model_and_load_ckpt
-from utils.utils import get_label_list
-from utils.utils import parse_config
+from myrtle_vision.utils.quantize import QFormat
+from myrtle_vision.utils.data_loader import Resisc45Loader
+from myrtle_vision.utils.models import get_models
+from myrtle_vision.utils.models import prepare_model_and_load_ckpt
+from myrtle_vision.utils.utils import get_label_list
+from myrtle_vision.utils.utils import parse_config
 
 
 def model_size(model):

@@ -29,9 +29,9 @@
         "decay_rate": 0.1,
         "distributed": true,
         "pretrained_backbone": "vit_tiny_patch16_224",
-        "sam": false,
+        "sam": true,
         "sam_rho": 0.05,
-        "total_prunes": 18,
+        "total_prunes": 12,
         "prune_freq": 0
     },
 

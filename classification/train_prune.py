@@ -1,3 +1,5 @@
+# SET APPLY_PRUNE_MASK IN CONFIG TO TRUE!!!
+# PROVIDE A CHECKPOINT!!!
 import argparse
 import json
 import os
@@ -90,7 +92,6 @@ def prune_scores(vit, vit_config, train_config, data_loader):
     progress_bar = tqdm(range(len(data_loader)*(heads*depth+1)))
     #Accuracy for ViT before masking any heads, to find change in accuracy when masking heads
     base_acc = evaluate()
-    #print(base_acc)
 
     #Grid to contain changes in accuracy for masking of each head
     grid = np.zeros((heads, depth))
@@ -123,17 +124,8 @@ def train_prune(rank, num_gpus, config):
     criterion, 
     train_data, 
     labels,
-    sam=True,
-    mixup_criterion=None, 
-    labels2=None,
-    mixup_lam=None,
+    sam=False,
     distiller=None):
-        #If using mixup, we require a second set of labels,
-        #and a value for lambda (mixup variable)
-        if mixup_criterion is not None:
-            assert len(labels2) == len(labels)
-            assert mixup_lam is not None
-
         nonlocal optimizer
         nonlocal epoch_loss
         nonlocal epoch_accuracy
@@ -144,9 +136,7 @@ def train_prune(rank, num_gpus, config):
 
         outputs = model(train_data)
 
-        if mixup_criterion:
-            train_loss = mixup_criterion(criterion, outputs, labels, labels2, mixup_lam)
-        elif distiller:
+        if distiller:
             train_loss = distiller(train_data, labels)
         else:
             train_loss = criterion(outputs, labels)
@@ -154,17 +144,17 @@ def train_prune(rank, num_gpus, config):
         #Calculate batch accuracy and accumulate in epoch accuracy
         epoch_loss += train_loss / train_loader_len
         output_labels = outputs.argmax(dim=1)
-        train_acc = (output_labels == labels).float().mean()
+        if isinstance(labels, tuple):
+            train_acc = (output_labels == labels[0]).float().mean()
+        else:
+            train_acc = (output_labels == labels).float().mean()
         epoch_accuracy += train_acc / train_loader_len
 
         if sam:
             train_loss.backward() #Gradient of loss
             optimizer.first_step(zero_grad=True) #Perturb weights
             outputs = model(train_data) #Outputs based on perturbed weights
-            if mixup_criterion:
-                perturbed_loss = mixup_criterion(criterion, outputs, labels, labels2, mixup_lam)
-            else:
-                perturbed_loss = criterion(outputs, labels) #Loss with perturbed weights
+            perturbed_loss = criterion(outputs, labels) #Loss with perturbed weights
             perturbed_loss.backward()#Gradient of perturbed loss
             optimizer.second_step(zero_grad=True) #Unperturb weights and updated weights based on perturbed losses
             optimizer.zero_grad() #Set gradients of optimized tensors to zero to prevent gradient accumulation
@@ -464,13 +454,10 @@ def train_prune(rank, num_gpus, config):
                     mixed_inputs, targets_a, targets_b, lam = mixup_data(train_imgs, 
                                                         train_labels, alpha=mixup_alpha)
                     optimize(model=vit,
-                    criterion=criterion,
+                    criterion=mixup_criterion(criterion),
                     train_data=mixed_inputs,
-                    labels=targets_a,
-                    sam=sam,
-                    mixup_criterion=mixup_criterion,
-                    labels2 = targets_b,
-                    mixup_lam=lam)
+                    labels=(targets_a, targets_b, lam),
+                    sam=sam)
                 else:
                     optimize(model=vit,
                     criterion=criterion,

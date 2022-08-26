@@ -19,5 +19,8 @@ def mixup_data(X, y, alpha=1):
 
     return mixed_X, y_1, y_2, lam
 
-def mixup_criterion(criterion, pred, y_1, y_2, lam):
-    return lam*criterion(pred, y_1) + (1-lam)*criterion(pred, y_2)
+def mixup_criterion(criterion):
+    def inner_criterion(pred, y1_y2_lam):
+        y1, y2, lam = y1_y2_lam
+        return lam*criterion(pred, y1) + (1-lam)*criterion(pred, y2)
+    return inner_criterion

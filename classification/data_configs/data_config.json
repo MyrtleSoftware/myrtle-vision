@@ -5,7 +5,7 @@
     "test_files": "test_imagepaths.txt",
     "label_map": "label_map.json",
     "number_of_classes": 45,
-    "mixup": false,
+    "mixup": true,
     "mixup_alpha": 0.7,
     "transform_ops_train": {
         "RandomResizedCrop": 224,

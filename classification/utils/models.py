@@ -37,6 +37,7 @@ def get_models(config, profile=False):
         "dropout": vit_config["dropout"],
         "emb_dropout": vit_config["emb_dropout"],
         "profile": profile,
+        "apply_prune_mask": vit_config["apply_prune_mask"],
         "q_format": QFormat[vit_config["q_format"]],
     }
     if "distiller_config" in config:
@@ -71,7 +72,7 @@ def prepare_model_and_load_ckpt(
             model=model,
             optimizer=optimizer,
             lr_scheduler=lr_scheduler,
-            filepath=train_config["checkpoint_path"],
+            filepath="checkpoints/" + train_config["checkpoint_path"],
         )
     else:
         # train from scratch

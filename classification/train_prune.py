@@ -1,3 +1,5 @@
+# SET APPLY_PRUNE_MASK IN CONFIG TO TRUE!!!
+# PROVIDE A CHECKPOINT!!!
 import argparse
 import json
 import os
@@ -9,6 +11,8 @@ import psutil
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
+import numpy as np
+from sklearn.metrics import classification_report, accuracy_score
 from timm.optim import create_optimizer
 from timm.scheduler import create_scheduler
 from torch.nn.parallel import DistributedDataParallel
@@ -55,8 +59,66 @@ def validation(val_loader, device, criterion, iteration, vit, distiller=None):
 
     return total_val_loss, total_val_acc
 
+def prune_scores(vit, vit_config, train_config, data_loader):
+    def evaluate(vit=vit, train_config=train_config, data_loader=data_loader):
+        # Load pre-trained weights
+        assert (
+            train_config["checkpoint_path"] != ""
+        ), "Must provide a checkpoint path in the config file"
+        prepare_model_and_load_ckpt(train_config=train_config, model=vit)
 
-def train_deit(rank, num_gpus, config):
+        # Evaluate accuracy on the test set
+        ground_truth_labels = []
+        predicted_labels = []
+        vit.eval()
+
+        with torch.no_grad():
+            for imgs, labels in data_loader:
+                imgs = imgs.to(device)
+                labels = labels.to(device)
+
+                outputs = vit(imgs)
+                pred_labels = outputs.argmax(dim=1).detach().cpu().numpy()
+                ground_truth_labels.extend(labels.detach().cpu().numpy())
+                predicted_labels.extend(pred_labels)
+                progress_bar.update(1)
+
+        return accuracy_score(ground_truth_labels, predicted_labels)
+
+    depth = vit_config["depth"]
+    heads = vit_config["heads"]
+    device = "cuda"
+
+    progress_bar = tqdm(range(len(data_loader)*(heads*depth+1)))
+    #Accuracy for ViT before masking any heads, to find change in accuracy when masking heads
+    base_acc = evaluate()
+
+    #Grid to contain changes in accuracy for masking of each head
+    grid = np.zeros((heads, depth))
+    for layer in range(depth):
+        for head in range(heads):
+            #Get mask variable for given head in given layer
+            #mask_var = list(vit.transformer.layers[layer][0].get_submodule("fn.fn").parameters())[0].data[head]
+            mask_var = vit.transformer.layers[layer][0].get_submodule("fn.fn").mask[head]
+            if mask_var == 0:
+                #If a head has already been made 0 previously, we do not need to calculate change in accuracy for masking it (it is already masked!)
+                grid[head,layer] = np.nan #When sorted nans go last
+                progress_bar.update(1)
+            else:
+                #Mask/prune one head
+                #list(vit.transformer.layers[layer][0].get_submodule("fn.fn").parameters())[0].data[head] = 0
+                vit.transformer.layers[layer][0].get_submodule("fn.fn").mask[head] = 0
+                #Evaluate model after masking one head.
+                #Find change in accuracy on test set and fill in grid.
+                new_acc = evaluate()
+                change_acc = (new_acc - base_acc)*100
+                grid[head,layer] = round(change_acc, 4)
+                #Restore ViT - unmask masked head
+                #list(vit.transformer.layers[layer][0].get_submodule("fn.fn").parameters())[0].data[head] = 1
+                vit.transformer.layers[layer][0].get_submodule("fn.fn").mask[head] = 1
+    return grid
+
+def train_prune(rank, num_gpus, config):
 
     def optimize(model, 
     criterion, 
@@ -148,6 +210,11 @@ def train_deit(rank, num_gpus, config):
     rho = train_config["sam_rho"]
     lr = train_config["lr"]
 
+    total_prunes = train_config["total_prunes"]
+    prune_freq = train_config["prune_freq"]
+    assert total_prunes >= 0
+    assert prune_freq >= 0
+
     mixup = data_config["mixup"]
     mixup_alpha = data_config["mixup_alpha"]
 
@@ -226,6 +293,31 @@ def train_deit(rank, num_gpus, config):
     if distiller is not None:
         distiller = distiller.to(rank)
 
+    # Prune
+    num_prunes = 0 #Counter for number of heads that have been pruned
+    prune_flag = False
+
+    if prune_freq == 0: #Prune all heads at once before training
+        print("Pruning")
+        grid = prune_scores(vit, vit_config, train_config, val_loader) #Get prune importance scores (change in acc)
+        sorted_grid = -np.sort(-grid.flatten()) #Sort scores (most positive changes -> most negative change)
+        while num_prunes < total_prunes:
+            sorted_val = sorted_grid[0] #Get most positive change
+            sorted_grid = sorted_grid[sorted_grid != sorted_val] #Remove all appearances of the value
+            indices = np.where(np.isclose(grid, sorted_val)) #Find all heads that have this change in acc
+            for j, head_index in enumerate(indices[0]): #Iterate over these heads
+                layer_index = indices[1][j]
+                mask = vit.transformer.layers[layer_index][0].get_submodule("fn.fn").mask
+                if torch.count_nonzero(mask) > 1: #If the number of masked heads in the layer is less than 2
+                    vit.transformer.layers[layer_index][0].get_submodule("fn.fn").mask[head_index] = 0 #Mask head
+                    print('Change in accuracy: ' + str(sorted_val) + '%')
+                    print('Layer: ', layer_index)
+                    print('Head: ', head_index)
+                    mask = vit.get_mask()
+                    print(mask)
+                    num_prunes += 1
+                    torch.cuda.empty_cache()
+
     # Distribute models
     if num_gpus > 1:
         vit = DistributedDataParallel(vit, device_ids=[rank])
@@ -271,6 +363,46 @@ def train_deit(rank, num_gpus, config):
         train_loader_len = len(train_loader)
         # Train loop
         for epoch in range(epoch_offset, epochs):
+            if prune_freq != 0:
+                if num_prunes < total_prunes: #Maximum number of heads to prune
+                    if epoch % prune_freq == 0: #Pruning frequency
+                        print("Pruning")
+                        #Get change in accuracy for pruning of each head
+                        grid = prune_scores(vit, vit_config, train_config, val_loader)
+                        vit.train() #Put model back into training state
+                        #Sort the changes in accuracy. Can not just get the highest change
+                        #because this might not satisfy latter restraints (always make sure
+                        #that there is one head left in a leayer - never prune all of the heads!)
+                        sorted_grid = -np.sort(-grid.flatten()) #Order of decreasing value
+                        for sorted_val in sorted_grid:
+                            #Find where in initial grid this value is - to obtain layer and head number
+                            indices = np.where(np.isclose(grid, sorted_val))
+                            #There may be more than one head with this value, so iterate over them
+                            for j, head_index in enumerate(indices[0]):
+                                layer_index = indices[1][j]
+                                mask = vit.transformer.layers[layer_index][0].get_submodule("fn.fn").mask
+                                #If there is more than one unpruned head - don't want to go below one head in a layer
+                                if torch.count_nonzero(mask) > 1:
+                                    #Prune head
+                                    #list(vit.transformer.layers[layer][0].get_submodule("fn.fn").parameters())[0].data[head] = 0 If we make mask a model param
+                                    vit.transformer.layers[layer_index][0].get_submodule("fn.fn").mask[head_index] = 0
+                                    print('Change in accuracy: ' + str(sorted_val) + '%')
+                                    print('Layer: ', layer_index)
+                                    print('Head: ', head_index)
+                                    mask = vit.get_mask()
+                                    print(mask)
+                                    num_prunes += 1
+                                    prune_flag = True
+                                    torch.cuda.empty_cache()
+                                    break
+                                else:
+                                    continue
+                            if prune_flag == True:
+                                prune_flag = False
+                                break
+                            else:
+                                continue
+            vit.train()
             epoch_loss = 0
             epoch_accuracy = 0
 
@@ -398,12 +530,12 @@ if __name__ == "__main__":
         if num_gpus > 1:
             # Set up multiprocessing processes for each GPU
             mp.spawn(
-                train_deit,
+                train_prune,
                 args=(num_gpus, config),
                 nprocs=num_gpus,
                 join=True,
             )
         else:
-            train_deit(0, num_gpus, config)
+            train_prune(0, num_gpus, config)
     except KeyboardInterrupt:
         print("Ctrl-c pressed; cleaning up and ending training early...")

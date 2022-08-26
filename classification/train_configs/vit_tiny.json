@@ -29,8 +29,10 @@
         "decay_rate": 0.1,
         "distributed": true,
         "pretrained_backbone": "vit_tiny_patch16_224",
-        "sam": false,
-        "sam_rho": 0.05
+        "sam": true,
+        "sam_rho": 0.05,
+        "total_prunes": 12,
+        "prune_freq": 0
     },
 
     "data_config_path": "data_configs/data_config.json",
@@ -49,6 +51,7 @@
         "mlp_dim": 768,
         "dropout": 0.0,
         "emb_dropout": 0.0,
-        "q_format": "FP32"
+        "q_format": "FP32",
+        "apply_prune_mask": false
     }
 }

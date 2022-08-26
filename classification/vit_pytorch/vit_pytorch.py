@@ -9,6 +9,7 @@ from quantize import QFormat
 from torch import nn
 from torch.quantization import DeQuantStub
 from torch.quantization import QuantStub
+import numpy as np
 
 MIN_NUM_PATCHES = 16
 
@@ -62,6 +63,7 @@ class Attention(nn.Module):
         heads: int = 8,
         dim_head: int = 64,
         dropout: float = 0.0,
+        apply_prune_mask: bool = False
     ):
         super().__init__()
         inner_dim = dim_head * heads
@@ -80,12 +82,19 @@ class Attention(nn.Module):
         # attention maps
         self.attn_output = nn.Identity()
 
+        self.mask = torch.ones(self.heads)
+        self.apply_prune_mask = apply_prune_mask
+
     def forward(self, x: torch.Tensor):
         b_dim, n_dim, c_dim = x.shape
         qkv = self.dequant_qkv(self.to_qkv(x))
         qkv = qkv.reshape(
             b_dim, n_dim, 3, self.heads, c_dim // self.heads
         ).permute(2, 0, 3, 1, 4)
+
+        if self.apply_prune_mask:
+            qkv = self.mask_heads(qkv)
+
         q, k, v = qkv[0], qkv[1], qkv[2]
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
@@ -96,6 +105,11 @@ class Attention(nn.Module):
         out = self.quant_out(out)
         out = self.to_out(out)
         return out
+
+    def mask_heads(self, qkv):
+        for i in range(self.heads):
+            qkv[:,:,i] *= self.mask[i]
+        return qkv
 
 
 class Transformer(nn.Module):
@@ -108,6 +122,7 @@ class Transformer(nn.Module):
         mlp_dim: int,
         dropout: float,
         profile: bool,
+        apply_prune_mask: bool = False
     ):
         super().__init__()
         # Create context managers when profiling model
@@ -135,6 +150,7 @@ class Transformer(nn.Module):
                                 heads=heads,
                                 dim_head=dim_head,
                                 dropout=dropout,
+                                apply_prune_mask=apply_prune_mask
                             ),
                         )
                     ),
@@ -177,6 +193,7 @@ class ViT(nn.Module):
         dropout: float = 0.0,
         emb_dropout: float = 0.0,
         profile: bool = False,
+        apply_prune_mask: bool = False,
         q_format: Optional[Union[str, QFormat]] = None,
     ):
         super().__init__()
@@ -221,6 +238,7 @@ class ViT(nn.Module):
             mlp_dim,
             dropout,
             profile,
+            apply_prune_mask
         )
 
         self.pool = pool
@@ -241,6 +259,8 @@ class ViT(nn.Module):
         self.quantizer.prepare_qat(
             q_format if q_format is not None else QFormat.FP32
         )
+        self.heads = heads
+        self.depth = depth
 
     def forward(self, img: torch.Tensor):
         b_dim, c_dim, h_dim, w_dim = img.shape
@@ -284,3 +304,19 @@ class ViT(nn.Module):
 
     def convert(self) -> None:
         self.quantizer.convert()
+
+    def get_mask(self):
+        grid = np.zeros((self.heads, self.depth))
+        for layer in range(self.depth):
+            for head in range(self.heads):
+                grid[head,layer] = self.transformer.layers[layer][0].get_submodule("fn.fn").mask[head]
+        return grid
+
+    def set_mask(self, mask):
+        assert len(mask) == self.heads
+        assert len(mask[0]) == self.depth
+
+        for layer in range(self.depth):
+            for head in range(self.heads):
+                self.transformer.layers[layer][0].get_submodule("fn.fn").mask[head] = mask[head,layer]
+        print(self.get_mask()) #Confirm mask has been set

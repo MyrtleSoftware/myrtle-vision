@@ -1,13 +1,21 @@
 import sys
 import json
 from pathlib import Path
+import re
+
+
+def get_class_name(image_name):
+    return re.split("_[0-9]+.jpg$", image_name)[0]
+
 
 resisc45_dir = Path("NWPU-RESISC45")
 
 if not resisc45_dir.exists():
     sys.exit(1)
 
-labels = sorted(p.name for p in resisc45_dir.iterdir())
+image_names = [p.name for p in resisc45_dir.iterdir()]
+labels = sorted(set([get_class_name(img) for img in image_names]))
+
 label_map = {}
 for label_id, label in enumerate(labels):
     label_map[label] = label_id
@@ -17,16 +25,21 @@ print(f"Creating {images_dir}")
 images_dir.mkdir()
 
 print(f"Moving images in to {images_dir}")
-for label in labels:
-    (resisc45_dir / label).rename(images_dir / label)
+for img in image_names:
+    class_name = get_class_name(img)
+    class_dir = (images_dir / class_name)
+    if not class_dir.exists():
+        class_dir.mkdir()
+    (resisc45_dir / img).rename(images_dir / class_name / img)
 
 split_names = ["train", "val", "test"]
 split_sizes = [0.7, 0.1, 0.2]
+
 # Paths of all the files in each of the splits
 split_paths = [[], [], []]
-
-for label in labels:
-    class_dir = (images_dir / label)
+for img in image_names:
+    class_name = get_class_name(img)
+    class_dir = (images_dir / class_name)
     image_paths = list(sorted(class_dir.iterdir()))
     pos = 0
     for i in range(len(split_names)):

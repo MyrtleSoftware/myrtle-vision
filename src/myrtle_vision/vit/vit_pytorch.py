@@ -4,8 +4,8 @@ from typing import Union
 
 import torch
 import torch.autograd.profiler as profiler
-from quantize import ModelQuantizer
-from quantize import QFormat
+from myrtle_vision.utils.quantize import ModelQuantizer
+from myrtle_vision.utils.quantize import QFormat
 from torch import nn
 from torch.quantization import DeQuantStub
 from torch.quantization import QuantStub

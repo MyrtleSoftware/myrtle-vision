@@ -137,13 +137,16 @@ def train_deit(rank, num_gpus, config):
 
     # Load pretrained backbone from timm if it exists
     if pretrained_backbone is not None:
-        vit.load_state_dict(
+        # Allow missing keys (because we don't care about loading the
+        # classifier head weights) but don't allow unexpected keys
+        assert vit.load_state_dict(
             rename_timm_state_dict(
                 pretrained_backbone,
                 vit_config,
                 data_config["number_of_classes"],
-            )
-        )
+            ),
+            strict=False,
+        ).unexpected_keys == []
 
     vit = vit.to(rank)
     if distiller is not None:

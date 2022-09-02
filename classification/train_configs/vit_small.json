@@ -39,6 +39,7 @@
     },
 
     "vit_config": {
+        "decoder": "classification",
         "image_size": 224,
         "patch_size": 16,
         "embed_dim": 384,

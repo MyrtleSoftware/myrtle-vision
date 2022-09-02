@@ -27,6 +27,7 @@ def get_models(config, profile=False):
     data_config = parse_config(config["data_config_path"])
 
     vit_kwargs = {
+        "decoder": vit_config["decoder"],
         "image_size": vit_config["image_size"],
         "patch_size": vit_config["patch_size"],
         "num_classes": data_config["number_of_classes"],
@@ -184,13 +185,16 @@ def rename_timm_state_dict(timm_model_name, vit_config, num_classes):
         (r"blocks\.([0-9]+)\.mlp\.fc2\.weight", r"transformer.layers.\1.1.fn.fn.net.3.weight"),
         (r"blocks\.([0-9]+)\.mlp\.fc2\.bias", r"transformer.layers.\1.1.fn.fn.net.3.bias"),
 
-        # Classifier head
-        ## norm
-        (r"norm\.weight", r"mlp_head.0.weight"),
-        (r"norm\.bias", r"mlp_head.0.bias"),
-        ## fc
-        (r"head\.weight", r"mlp_head.1.weight"),
-        (r"head\.bias", r"mlp_head.1.bias"),
+    ]
+
+    # Classifier head - won't want to load these
+    classifier_head_patterns = [
+        # norm
+        (r"norm\.weight"),
+        (r"norm\.bias"),
+        # fc
+        (r"head\.weight"),
+        (r"head\.bias"),
     ]
 
     timm_vit = timm.create_model(timm_model_name, pretrained=True, num_classes=num_classes)
@@ -198,6 +202,14 @@ def rename_timm_state_dict(timm_model_name, vit_config, num_classes):
     # timm state_dict with renamed keys
     state_dict = {}
     for key in timm_vit.state_dict():
+        ignore_key = False
+        for pat in classifier_head_patterns:
+            if re.match(pat, key):
+                ignore_key = True
+                break
+        if ignore_key:
+            continue
+
         new_key = apply_rules(key, rules)
         # Special case for patch embedding which we implement as a Linear layer
         # rather than a Conv2D.

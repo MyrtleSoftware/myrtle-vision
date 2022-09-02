@@ -224,7 +224,6 @@ class ViT(nn.Module):
         )
 
         self.pool = pool
-        self.to_latent = nn.Identity()
 
         self.mlp_head = nn.Sequential(
             nn.LayerNorm(dim),
@@ -273,8 +272,6 @@ class ViT(nn.Module):
             x = self.transformer(x)
 
         x = x.mean(dim=1) if self.pool == "mean" else x[:, 0]
-
-        x = self.to_latent(x)
 
         with self.cm_mlp_head:
             output = self.mlp_head(x)

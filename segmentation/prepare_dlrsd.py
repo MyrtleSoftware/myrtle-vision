@@ -75,7 +75,7 @@ for i in range(len(split_names)):
 label_map = {
     'airplane': 0,
     'bare soil': 1,
-    'buildings': 2, 
+    'buildings': 2,
     'cars': 3,
     'chaparral': 4,
     'court': 5,

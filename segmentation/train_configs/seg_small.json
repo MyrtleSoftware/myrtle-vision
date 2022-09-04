@@ -1,12 +1,12 @@
 {
     "train_config": {
-        "output_directory": "checkpoints_vit_small",
+        "output_directory": "checkpoints_seg_small",
         "checkpoint_path": "",
         "epochs": 300,
         "local_batch_size": 32,
         "global_batch_size": 64,
         "iters_per_checkpoint": 1000,
-        "iters_per_val": 1000,
+        "iters_per_val": 100,
         "seed": 1234,
         "drop_last_batch": true,
         "optimizer": "adamw",
@@ -39,7 +39,7 @@
     },
 
     "vit_config": {
-        "decoder": "classification",
+        "decoder": "segmentation",
         "image_size": 224,
         "patch_size": 16,
         "embed_dim": 384,

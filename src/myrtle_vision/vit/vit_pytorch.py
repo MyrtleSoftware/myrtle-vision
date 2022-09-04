@@ -164,6 +164,7 @@ class ViT(nn.Module):
     def __init__(
         self,
         *,
+        decoder: str,
         image_size: int,
         patch_size: int,
         num_classes: int,
@@ -190,10 +191,10 @@ class ViT(nn.Module):
             f"attention to be effective (at least 16). Try decreasing your "
             f"patch size"
         )
-        assert pool in {
-            "cls",
-            "mean",
-        }, "pool type must be either cls (cls token) or mean (mean pooling)"
+        assert decoder in {
+            "classification",
+            "segmentation",
+        }, "decoder must be either classification or segmentation"
         self.patch_size = patch_size
 
         # Create context managers when profiling model
@@ -223,13 +224,18 @@ class ViT(nn.Module):
             profile,
         )
 
-        self.pool = pool
-        self.to_latent = nn.Identity()
-
-        self.mlp_head = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, num_classes),
-        )
+        if decoder == "classification":
+            self.decoder = ClassificationDecoder(
+                dim,
+                num_classes,
+            )
+        elif decoder == "segmentation":
+            self.decoder = SegmentationDecoder(
+                dim,
+                num_classes,
+                image_size,
+                patch_size,
+            )
 
         self.quant_img = QuantStub()
         self.quant_pos_embedding = QuantStub()
@@ -272,15 +278,62 @@ class ViT(nn.Module):
         with self.cm_transformer:
             x = self.transformer(x)
 
-        x = x.mean(dim=1) if self.pool == "mean" else x[:, 0]
-
-        x = self.to_latent(x)
-
         with self.cm_mlp_head:
-            output = self.mlp_head(x)
+            output = self.decoder(x)
         output = self.dequant_output(output)
 
         return output
 
     def convert(self) -> None:
         self.quantizer.convert()
+
+class ClassificationDecoder(nn.Module):
+    def __init__(
+        self,
+        dim,
+        num_classes,
+    ):
+        super().__init__()
+        self.norm = nn.LayerNorm(dim)
+        self.linear = nn.Linear(dim, num_classes)
+
+    def forward(self, x: torch.Tensor):
+        # Get the class token
+        x = x[:, 0]
+
+        x = self.norm(x)
+        x = self.linear(x)
+
+        return x
+
+class SegmentationDecoder(nn.Module):
+    def __init__(
+        self,
+        dim,
+        num_classes,
+        image_size,
+        patch_size,
+    ):
+        super().__init__()
+        self.norm = nn.LayerNorm(dim)
+        self.linear = nn.Linear(dim, num_classes)
+        self.upsample = nn.Upsample(size=image_size, mode='bilinear')
+
+        self.image_size_in_patches = image_size // patch_size
+
+    def forward(self, x: torch.Tensor):
+        # Remove the class token
+        x = x[:,1:]
+
+        x = self.norm(x)
+        x = self.linear(x)
+
+        # rearrange: b (h w) c -> b c h w
+        b, hw, c = x.size()
+        x = torch.transpose(x, 1, 2)
+        x = x.view(b, c, self.image_size_in_patches, self.image_size_in_patches)
+
+        x = self.upsample(x)
+
+        # Returns class probability distribution per pixel
+        return x

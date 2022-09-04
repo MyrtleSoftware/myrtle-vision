@@ -14,7 +14,8 @@ from timm.scheduler import create_scheduler
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from myrtle_vision.utils.data_loader import Resisc45Loader
+from myrtle_vision.utils.data_loader import collate_both
+from myrtle_vision.utils.data_loader import DlrsdLoader
 from myrtle_vision.utils.models import get_models
 from myrtle_vision.utils.models import get_optimizer_args
 from myrtle_vision.utils.models import prepare_model_and_load_ckpt
@@ -27,7 +28,7 @@ from myrtle_vision.utils.utils import parse_config
 from myrtle_vision.utils.utils import seed_everything
 
 
-def validation(val_loader, device, criterion, iteration, vit, distiller=None):
+def validation(val_loader, device, criterion, iteration, vit):
     total_val_loss = 0
     total_val_acc = 0
     # run validation steps
@@ -39,12 +40,11 @@ def validation(val_loader, device, criterion, iteration, vit, distiller=None):
 
             val_outputs = vit(val_imgs)
             # calculate batch validation loss
-            if distiller is not None:
-                val_loss = distiller(val_imgs, val_labels)
-            else:
-                val_loss = criterion(val_outputs, val_labels)
+            val_loss = criterion(val_outputs, val_labels)
             total_val_loss += val_loss / len(val_loader)
+
             # calculate batch validation accuracy
+            # TODO Use IoU, not number of correct pixels
             val_acc = (val_outputs.argmax(dim=1) == val_labels).float().mean()
             total_val_acc += val_acc / len(val_loader)
 
@@ -99,14 +99,14 @@ def train_deit(rank, num_gpus, config):
         print("output directory:", output_directory)
 
     # load train and validation sets
-    trainset = Resisc45Loader(
+    trainset = DlrsdLoader(
         mode="train",
         dataset_path=data_config["dataset_path"],
         imagepaths=data_config["train_files"],
         label_map_path=data_config["label_map"],
         transform_config=data_config["transform_ops_train"],
     )
-    valset = Resisc45Loader(
+    valset = DlrsdLoader(
         mode="eval",
         dataset_path=data_config["dataset_path"],
         imagepaths=data_config["valid_files"],
@@ -121,6 +121,7 @@ def train_deit(rank, num_gpus, config):
         shuffle=(train_sampler is None),
         sampler=train_sampler,
         batch_size=batch_size,
+        collate_fn=collate_both,
         pin_memory=False,
         drop_last=train_config["drop_last_batch"],
     )
@@ -128,12 +129,13 @@ def train_deit(rank, num_gpus, config):
         valset,
         num_workers=1,
         batch_size=batch_size,
+        collate_fn=collate_both,
         pin_memory=False,
         drop_last=train_config["drop_last_batch"],
     )
 
     # Instantiate models
-    vit, distiller = get_models(config)
+    vit, _ = get_models(config)
 
     # Load pretrained backbone from timm if it exists
     if pretrained_backbone is not None:
@@ -149,25 +151,16 @@ def train_deit(rank, num_gpus, config):
         ).unexpected_keys == []
 
     vit = vit.to(rank)
-    if distiller is not None:
-        distiller = distiller.to(rank)
 
     # Distribute models
     if num_gpus > 1:
         vit = DistributedDataParallel(vit, device_ids=[rank])
-        if distiller is not None:
-            distiller = DistributedDataParallel(distiller, device_ids=[rank])
 
     # create optimizer and loss function for the vit model
     optimizer_args = get_optimizer_args(train_config)
-    if distiller is not None:
-        optimizer = create_optimizer(optimizer_args, distiller)
-    else:
-        optimizer = create_optimizer(optimizer_args, vit)
+    optimizer = create_optimizer(optimizer_args, vit)
     lr_scheduler, _ = create_scheduler(optimizer_args, optimizer)
     loss_scaler = torch.cuda.amp.GradScaler()
-    # loss criterion used only when model trained without distillation and
-    # during validation
     criterion = torch.nn.CrossEntropyLoss()
 
     iteration = prepare_model_and_load_ckpt(
@@ -225,16 +218,12 @@ def train_deit(rank, num_gpus, config):
                     # run validation
                     torch.cuda.empty_cache()
                     model_to_eval = vit.module if num_gpus > 1 else vit
-                    distiller_to_eval = distiller
-                    if num_gpus > 1 and distiller is not None:
-                        distiller_to_eval = distiller.module
                     epoch_last_val_loss, epoch_last_val_accuracy = validation(
                         val_loader=val_loader,
                         device=device,
                         criterion=criterion,
                         iteration=iteration,
                         vit=model_to_eval,
-                        distiller=distiller_to_eval,
                     )
 
                 if n_accum == 0:
@@ -244,11 +233,7 @@ def train_deit(rank, num_gpus, config):
                 train_labels = train_labels.to(device)
 
                 outputs = vit(train_imgs)
-                # calculate batch loss and accumulate in epoch loss
-                if distiller is not None:
-                    train_loss = distiller(train_imgs, train_labels)
-                else:
-                    train_loss = criterion(outputs, train_labels)
+                train_loss = criterion(outputs, train_labels)
                 epoch_loss += train_loss / len(train_loader)
                 # calculate batch accuracy and accumulate in epoch accuracy
                 output_labels = outputs.argmax(dim=1)
@@ -359,3 +344,4 @@ if __name__ == "__main__":
             train_deit(0, num_gpus, config)
     except KeyboardInterrupt:
         print("Ctrl-c pressed; cleaning up and ending training early...")
+

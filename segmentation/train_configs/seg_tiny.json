@@ -1,12 +1,12 @@
 {
     "train_config": {
-        "output_directory": "checkpoints_vit_small",
+        "output_directory": "checkpoints_seg_tiny",
         "checkpoint_path": "",
         "epochs": 300,
         "local_batch_size": 32,
         "global_batch_size": 64,
         "iters_per_checkpoint": 1000,
-        "iters_per_val": 1000,
+        "iters_per_val": 100,
         "seed": 1234,
         "drop_last_batch": true,
         "optimizer": "adamw",
@@ -28,7 +28,7 @@
         "patience_epochs": 5,
         "decay_rate": 0.1,
         "distributed": true,
-        "pretrained_backbone": "vit_small_patch16_224"
+        "pretrained_backbone": "vit_tiny_patch16_224"
     },
 
     "data_config_path": "data_configs/data_config.json",
@@ -39,13 +39,13 @@
     },
 
     "vit_config": {
-        "decoder": "classification",
+        "decoder": "segmentation",
         "image_size": 224,
         "patch_size": 16,
-        "embed_dim": 384,
+        "embed_dim": 192,
         "depth": 12,
-        "heads": 6,
-        "mlp_dim": 1536,
+        "heads": 3,
+        "mlp_dim": 768,
         "dropout": 0.0,
         "emb_dropout": 0.0,
         "q_format": "FP32"

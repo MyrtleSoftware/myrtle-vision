@@ -36,18 +36,8 @@ solution.
 
 Follow these setup steps before moving on to any of the steps below.
 
-This requires Python >=3.7 and we recommend using something like `venv` or
-`conda` to manage a virtual environment to install the Python dependencies.
-
-1. Install the non-Python dependencies, CUDA and Ninja. These are needed for the
-   QPyTorch library to work.
-2. Install Python dependencies:
-   ```bash
-   $ pwd
-   <...>/myrtle-vision/classification
-   $ pip install -r requirements.txt
-   ```
-3. Download and set up your dataset in the base directory of the repository,
+1. Ensure you have installed the `myrtle_vision` library.
+2. Download and set up your dataset in the base directory of the repository,
    using or adding to `data_configs/data_config.json` accordingly. For example,
    if using the Resisc45 dataset with the provided Resisc45 config, your
    directory hierarchy should look like this (see [below](#Resisc45) for how to

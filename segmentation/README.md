@@ -62,14 +62,14 @@ Follow these setup steps before moving on to any of the steps below.
    Model checkpoints will be saved intermittently in a subdirectory specified by
    the `output_directory` parameter in the training config.
 
-   If cuda is avaliable, it will be used by default. If you want to use cpu for
+   If cuda is available, it will be used by default. If you want to use cpu for
    training, then run:  `export CUDA_HOME=''`, before running the training script.
 
 2. The data augmentations applied to the DLRSD dataset are only resizing to 224x224
    pixels, and normalization. No other data augmentations have been investigated yet.
 
 ## Testing
-   Running inferences can be done with tthe following command:
+   Running inferences can be done with the following command:
 
    ```bash
    $ pwd

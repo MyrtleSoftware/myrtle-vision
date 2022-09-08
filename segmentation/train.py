@@ -30,7 +30,7 @@ from myrtle_vision.utils.utils import parse_config
 from myrtle_vision.utils.utils import seed_everything
 from myrtle_vision.utils.miou import MIoU
 
-writer = SummaryWriter("runs/exp3")
+writer = SummaryWriter("runs/")
 
 def validation(val_loader, n_classes, device, criterion, iteration, vit):
     total_val_loss = 0
@@ -51,7 +51,6 @@ def validation(val_loader, n_classes, device, criterion, iteration, vit):
             total_val_loss += val_loss / len(val_loader)
 
             # calculate batch validation accuracy
-            # TODO Use IoU, not number of correct pixels
             val_acc = (val_outputs.argmax(dim=1) == val_labels).float().mean()
             total_val_acc += val_acc / len(val_loader)
 
@@ -123,7 +122,6 @@ def train_deit(rank, num_gpus, config):
         print("output directory:", output_directory)
 
     # load train and validation sets
-    #print(f"data config {data_config}")
     trainset = DlrsdLoader(
         mode="train",
         dataset_path=data_config["dataset_path"],
@@ -365,7 +363,6 @@ if __name__ == "__main__":
                 args=(num_gpus, config),
                 nprocs=num_gpus,
                 join=True,
-                
             )
         else:
             train_deit(0, num_gpus, config)

@@ -12,9 +12,10 @@ ucmerced_zip_path = Path("UCMerced_LandUse.zip")
 dlrsd_zip_path = Path("DLRSD.zip")
 
 if not ucmerced_zip_path.exists() or not dlrsd_zip_path.exists():
+    print(f"Error: Could not find the UCMerced and DLRSD datasets in zip format.")
     sys.exit(1)
 
-dlrsd_dataset_dir = Path("DLRSD_dataset directory")
+dlrsd_dataset_dir = Path("DLRSD_dataset")
 print(f"Creating {dlrsd_dataset_dir}")
 dlrsd_dataset_dir.mkdir()
 

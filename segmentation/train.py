@@ -14,6 +14,8 @@ from timm.scheduler import create_scheduler
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
+from torch.utils.tensorboard import SummaryWriter
+
 from myrtle_vision.utils.data_loader import collate_both
 from myrtle_vision.utils.data_loader import DlrsdLoader
 from myrtle_vision.utils.models import get_models
@@ -26,11 +28,16 @@ from myrtle_vision.utils.utils import get_batch_sizes
 from myrtle_vision.utils.utils import init_distributed
 from myrtle_vision.utils.utils import parse_config
 from myrtle_vision.utils.utils import seed_everything
+from myrtle_vision.utils.miou import MIoU
 
+writer = SummaryWriter("runs/exp3")
 
-def validation(val_loader, device, criterion, iteration, vit):
+def validation(val_loader, n_classes, device, criterion, iteration, vit):
     total_val_loss = 0
     total_val_acc = 0
+    ground_truth_labels = []
+    predicted_labels = []
+    miou = MIoU(num_classes=n_classes, device=device)
     # run validation steps
     vit.eval()
     with torch.no_grad():
@@ -48,6 +55,22 @@ def validation(val_loader, device, criterion, iteration, vit):
             val_acc = (val_outputs.argmax(dim=1) == val_labels).float().mean()
             total_val_acc += val_acc / len(val_loader)
 
+            ## calculate batch validation metric (mIoU)
+            val_outputs = val_outputs.argmax(dim=1)
+            miou.add_img(val_outputs, val_labels)
+            ground_truth_labels.extend(val_labels.detach().cpu().numpy())
+            predicted_labels.extend(val_outputs.detach().cpu().numpy())
+
+    #per_class_iou = miou.get_per_class_iou()
+
+    miou = miou.get_miou()
+    print(f"miou is {miou}")
+
+    # Log accuracy, loss, mIoU
+    writer.add_scalar("accuracy", total_val_acc, iteration)
+    writer.add_scalar("loss", total_val_loss, iteration)
+    writer.add_scalar("miou", miou, iteration)
+
     vit.train()
 
     return total_val_loss, total_val_acc
@@ -63,6 +86,7 @@ def train_deit(rank, num_gpus, config):
     vit_config = config["vit_config"]
     # parse data config
     data_config = parse_config(config["data_config_path"])
+    n_classes = data_config["number_of_classes"]
 
     epochs = train_config["epochs"]
     output_directory = train_config["output_directory"]
@@ -99,6 +123,7 @@ def train_deit(rank, num_gpus, config):
         print("output directory:", output_directory)
 
     # load train and validation sets
+    #print(f"data config {data_config}")
     trainset = DlrsdLoader(
         mode="train",
         dataset_path=data_config["dataset_path"],
@@ -220,6 +245,7 @@ def train_deit(rank, num_gpus, config):
                     model_to_eval = vit.module if num_gpus > 1 else vit
                     epoch_last_val_loss, epoch_last_val_accuracy = validation(
                         val_loader=val_loader,
+                        n_classes=n_classes,
                         device=device,
                         criterion=criterion,
                         iteration=iteration,
@@ -339,6 +365,7 @@ if __name__ == "__main__":
                 args=(num_gpus, config),
                 nprocs=num_gpus,
                 join=True,
+                
             )
         else:
             train_deit(0, num_gpus, config)

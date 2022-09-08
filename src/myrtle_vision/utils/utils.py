@@ -7,6 +7,28 @@ import torch
 import torch.distributed as dist
 
 
+def load_imagepaths_and_segmaps(
+    dataset_path,
+    imagepaths,
+):
+    """
+    Return a list of image paths with their corresponding segmap image paths.
+    """
+    imagepaths_filepath = os.path.join(dataset_path, imagepaths)
+    with open(imagepaths_filepath, encoding="utf-8") as paths_file:
+        imagepaths_and_segmaps = []
+        for line in paths_file:
+            imagepaths_and_segmaps.append([
+                    line.split(",")[0],
+                    line.split(",")[1].strip("\n")
+                    ]
+                    )
+            #imagepaths_and_segmaps.append(dataset_path+"/"+line.split(",")[0])
+            #imagepaths_and_segmaps.append(dataset_path+"/"+line.split(",")[1])
+
+    return imagepaths_and_segmaps
+
+
 def load_imagepaths_and_labels(
     dataset_path,
     imagepaths,

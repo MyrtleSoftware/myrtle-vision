@@ -1,12 +1,12 @@
 {
-    "dataset_path_images": "UCMerced_LandUse",
-    "dataset_path_labels": "DLRSD",
+    "dataset_path": "DLRSD_dataset",
     "train_files": "train_imagepaths.txt",
     "valid_files": "val_imagepaths.txt",
     "test_files": "test_imagepaths.txt",
     "label_map": "label_map.json",
     "number_of_classes": 17,
     "transform_ops_train": {
+        "Resize": 224,
         "RandomResizedCrop": 224,
         "RandomHorizontalFlip": null,
         "Normalize": {

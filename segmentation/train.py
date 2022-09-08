@@ -173,7 +173,8 @@ def train_deit(rank, num_gpus, config):
             strict=False,
         ).unexpected_keys == []
 
-    vit = vit.to(rank)
+    if num_gpus > 0:
+        vit = vit.to(rank)
 
     # Distribute models
     if num_gpus > 1:
@@ -345,9 +346,11 @@ if __name__ == "__main__":
     if config["train_config"]["distributed"]:
         if num_gpus <= 1:
             print(
-                "WARNING: tried to enable distributed training but only "
+                "ERROR: tried to enable distributed training but only "
                 f"found {num_gpus} GPU(s)"
             )
+            print("To disable distributed training, set `distributed` to `false` in the train_config")
+            sys.exit(1)
     elif num_gpus > 1:
         print(
             "INFO: you have multiple GPUs available but did not enable "

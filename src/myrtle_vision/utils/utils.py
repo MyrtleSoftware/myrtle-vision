@@ -83,7 +83,7 @@ def seed_everything(seed):
 
 
 def get_batch_sizes(target_batch, num_gpus, global_batch, verbose=False):
-    target_samples_per_batch = num_gpus * target_batch
+    target_samples_per_batch = num_gpus * target_batch if num_gpus > 0 else target_batch
     if global_batch % target_samples_per_batch == 0:
         # Global batch size is a multiple of the ideal number of samples
         # processed in each minibatch so just return this preferred batch size
@@ -91,7 +91,7 @@ def get_batch_sizes(target_batch, num_gpus, global_batch, verbose=False):
         # global batch size
 
         return target_batch, global_batch // target_samples_per_batch
-    elif global_batch % num_gpus == 0:
+    elif num_gpus > 0 and global_batch % num_gpus == 0:
         # Batch size is exactly divisible by the number of GPUs available but
         # the desired batch size can't be reached (otherwise the above would
         # have triggered) so try and find the best batch size that's no bigger

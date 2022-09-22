@@ -26,20 +26,13 @@ def intersect_and_union(pred_label,
         pred_label = torch.from_numpy(
             np.array(Image.open(pred_label))
         )
-    #else:
-    #    pred_label = torch.from_numpy(np.load(pred_label))
 
     if isinstance(label, str):
         label = torch.from_numpy(
             np.array(Image.open(label))
         )
-    #else:
-    #    label = torch.from_numpy(label)
-    
-    print(f"pred label {pred_label.size()}")
-    print(f"label {label.size()}")
+
     intersect = pred_label[pred_label == label]
-    print(f"intersect {intersect.size()}")
     area_intersect = torch.histc(
         intersect.float(), bins=num_classes, min=0, max=num_classes - 1)
     area_pred_label = torch.histc(

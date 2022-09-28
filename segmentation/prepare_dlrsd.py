@@ -9,12 +9,7 @@ from pathlib import Path
 from zipfile import ZipFile
 import random
 
-# Create a random permutation of [0..100) to use to shuffle/permute each of the
-# subdirectories of UCMerced/DLRSD. This is necessary since UCMerced/DLRSD are
-# quite "sorted" (i.e. similar images appear near each other).
 random.seed(0)
-randperm = list(range(100))
-random.shuffle(randperm)
 
 ucmerced_zip_path = Path("UCMerced_LandUse.zip")
 dlrsd_zip_path = Path("DLRSD.zip")
@@ -58,6 +53,13 @@ dlrsd_label_paths = [
 categories = sorted(p.name for p in images_dir.iterdir() if p.is_dir())
 
 for category in categories:
+    # Create a random permutation of [0..100) to use to shuffle/permute each of
+    # the subdirectories of UCMerced/DLRSD. This is necessary since
+    # UCMerced/DLRSD are quite "sorted" (i.e. similar images appear near each
+    # other).
+    randperm = list(range(100))
+    random.shuffle(randperm)
+
     images_category_dir = images_dir / category
     labels_category_dir = labels_dir / category
     image_and_label_paths = list(zip(

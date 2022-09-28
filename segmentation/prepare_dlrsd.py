@@ -7,6 +7,9 @@ import sys
 import json
 from pathlib import Path
 from zipfile import ZipFile
+import random
+
+random.seed(0)
 
 ucmerced_zip_path = Path("UCMerced_LandUse.zip")
 dlrsd_zip_path = Path("DLRSD.zip")
@@ -50,6 +53,13 @@ dlrsd_label_paths = [
 categories = sorted(p.name for p in images_dir.iterdir() if p.is_dir())
 
 for category in categories:
+    # Create a random permutation of [0..100) to use to shuffle/permute each of
+    # the subdirectories of UCMerced/DLRSD. This is necessary since
+    # UCMerced/DLRSD are quite "sorted" (i.e. similar images appear near each
+    # other).
+    randperm = list(range(100))
+    random.shuffle(randperm)
+
     images_category_dir = images_dir / category
     labels_category_dir = labels_dir / category
     image_and_label_paths = list(zip(
@@ -58,12 +68,12 @@ for category in categories:
     ))
     pos = 0
     for i in range(len(split_names)):
-        split_paths[i].extend(
-            image_and_label_paths[
-                int(pos * len(image_and_label_paths))
-                : int((pos + split_sizes[i]) * len(image_and_label_paths))
-            ]
-        )
+        split_paths[i].extend([
+            image_and_label_paths[randperm[i]] for i in range(
+                int(pos * len(image_and_label_paths)),
+                int((pos + split_sizes[i]) * len(image_and_label_paths)),
+            )
+        ])
         pos += split_sizes[i]
 
 for i in range(len(split_names)):

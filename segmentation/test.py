@@ -33,7 +33,7 @@ def test_deit(config):
         dataset_path=data_config["dataset_path"],
         imagepaths=data_config["test_files"],
         label_map_path=data_config["label_map"],
-        transform_config=data_config["transform_ops_train"],
+        transform_config=data_config["transform_ops_val"],
     )
 
     test_loader = DataLoader(

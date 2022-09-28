@@ -16,7 +16,6 @@
     },
     "transform_ops_val": {
         "Resize": 224,
-        "CenterCrop": 224,
         "Normalize": {
             "Mean": [0.5, 0.5, 0.5],
             "Std": [0.5, 0.5, 0.5]

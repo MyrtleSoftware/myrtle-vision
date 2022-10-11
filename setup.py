@@ -6,7 +6,7 @@ setup(
     install_requires=[
         "torch==1.11.0",
         "torchvision==0.12.0",
-        "timm==0.5.4",
+        "timm>=0.6.7",
         "qtorch==0.3.0",
         "psutil",
         "numpy",

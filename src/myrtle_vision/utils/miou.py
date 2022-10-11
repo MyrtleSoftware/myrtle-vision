@@ -1,7 +1,6 @@
 import torch
 from PIL import Image
 import numpy as np
-from torchmetrics import JaccardIndex
 
 def intersect_and_union(pred_label,
                         label,

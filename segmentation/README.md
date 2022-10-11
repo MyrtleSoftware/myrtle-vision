@@ -24,13 +24,7 @@ solution.
 Follow these setup steps before moving on to any of the steps below.
 
 1. Ensure you have installed the `myrtle_vision` library.
-2. Install requirements specific to the segmentation scripts in this directory:
-   ```bash
-   $ pwd
-   <...>/myrtle-vision/segmentation
-   $ pip install -r requirements.txt
-   ```
-3. Download and set up your dataset in this directory, using or adding to
+2. Download and set up your dataset in this directory, using or adding to
    `data_configs/data_config.json` accordingly. If using the DLRSD dataset with
    the provided DLRSD config, see [below](#DLRSD) for how to set up the DLRSD
    dataset automatically).

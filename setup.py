@@ -12,6 +12,7 @@ setup(
         "numpy",
         "scikit-learn",
         "tqdm",
+        "tensorboard",
     ],
     packages=find_packages(
         where="src",

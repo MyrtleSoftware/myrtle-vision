@@ -95,7 +95,7 @@ def train_deit(rank, num_gpus, config):
     batch_size = train_config["local_batch_size"]
     global_batch_size = train_config["global_batch_size"]
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    pretrained_backbone = train_config["pretrained_backbone"]
+    pretrained_backbone = train_config.get("pretrained_backbone")
 
     seed_everything(seed)
 

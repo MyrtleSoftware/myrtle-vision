@@ -5,8 +5,8 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from myrtle_vision.utils.data_loader import DlrsdLoader
-from myrtle_vision.utils.data_loader import collate_both
+from myrtle_vision.datasets.dlrsd import Dlrsd
+from myrtle_vision.transforms.segmentation import collate_both
 from myrtle_vision.utils.models import get_models
 from myrtle_vision.utils.models import prepare_model_and_load_ckpt
 from myrtle_vision.utils.utils import parse_config
@@ -26,7 +26,7 @@ def test_deit(config):
     num_classes = data_config["number_of_classes"]
 
     # load test set
-    testset = DlrsdLoader(
+    testset = Dlrsd(
         mode="test",
         dataset_path=data_config["dataset_path"],
         imagepaths=data_config["test_files"],

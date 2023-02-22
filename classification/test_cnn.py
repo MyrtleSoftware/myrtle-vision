@@ -6,7 +6,7 @@ from sklearn.metrics import classification_report
 from torch.utils.data import DataLoader
 from torchvision import models
 from tqdm import tqdm
-from myrtle_vision.utils.data_loader import Resisc45Loader
+from myrtle_vision.datasets.resisc45 import Resisc45
 from myrtle_vision.utils.utils import get_label_list
 from myrtle_vision.utils.utils import parse_config
 
@@ -54,7 +54,7 @@ def test_cnn(model_name, cnn_weights, use_val_set):
         imagepaths = data_config["test_files"]
 
     # load evaluation set
-    evalset = Resisc45Loader(
+    evalset = Resisc45(
         mode="eval",
         dataset_path=dataset_path,
         imagepaths=imagepaths,

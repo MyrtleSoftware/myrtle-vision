@@ -16,8 +16,8 @@ from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.tensorboard import SummaryWriter
 
-from myrtle_vision.utils.data_loader import collate_both
-from myrtle_vision.utils.data_loader import DlrsdLoader
+from myrtle_vision.datasets.dlrsd import Dlrsd
+from myrtle_vision.transforms.segmentation import collate_both
 from myrtle_vision.utils.models import get_models
 from myrtle_vision.utils.models import get_optimizer_args
 from myrtle_vision.utils.models import prepare_model_and_load_ckpt
@@ -122,14 +122,14 @@ def train_deit(rank, num_gpus, config):
         print("output directory:", output_directory)
 
     # load train and validation sets
-    trainset = DlrsdLoader(
+    trainset = Dlrsd(
         mode="train",
         dataset_path=data_config["dataset_path"],
         imagepaths=data_config["train_files"],
         label_map_path=data_config["label_map"],
         transform_config=data_config["transform_ops_train"],
     )
-    valset = DlrsdLoader(
+    valset = Dlrsd(
         mode="eval",
         dataset_path=data_config["dataset_path"],
         imagepaths=data_config["valid_files"],

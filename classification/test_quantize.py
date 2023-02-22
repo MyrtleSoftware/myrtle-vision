@@ -8,8 +8,8 @@ import torch
 from sklearn.metrics import classification_report
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from myrtle_vision.datasets.resisc45 import Resisc45
 from myrtle_vision.utils.quantize import QFormat
-from myrtle_vision.utils.data_loader import Resisc45Loader
 from myrtle_vision.utils.models import get_models
 from myrtle_vision.utils.models import prepare_model_and_load_ckpt
 from myrtle_vision.utils.utils import get_label_list
@@ -53,7 +53,7 @@ def test_deit(config, calib_steps, quantized_ckpt):
         device = "cuda"
 
     # load validation set, that will be used for calibration
-    valset = Resisc45Loader(
+    valset = Resisc45(
         mode="eval",
         dataset_path=dataset_path,
         imagepaths=data_config["valid_files"],
@@ -69,7 +69,7 @@ def test_deit(config, calib_steps, quantized_ckpt):
     )
 
     # load test set
-    testset = Resisc45Loader(
+    testset = Resisc45(
         mode="eval",
         dataset_path=dataset_path,
         imagepaths=data_config["test_files"],

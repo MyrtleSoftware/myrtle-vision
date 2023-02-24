@@ -2,8 +2,8 @@ import math
 import numbers
 import os
 import random
+from typing import Sequence
 
-import numpy as np
 import torch.utils.data
 from PIL import Image
 from torchvision import transforms

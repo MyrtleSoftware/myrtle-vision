@@ -14,10 +14,9 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.x'
-          cache: 'pip'
       - name: Display Python version
         run: python -c "import sys; print(sys.version)"
       - name: Install dependencies
         run: python -m pip install --upgrade pip pyflakes
       - name: Pyflakes
-        run: find -name '*.py' -exec pyflakes {} \;
+        run: find -name '*.py' -exec pyflakes {} +

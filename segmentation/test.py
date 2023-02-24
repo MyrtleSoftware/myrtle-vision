@@ -1,7 +1,6 @@
 import argparse
 import json
 
-import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -10,7 +9,6 @@ from myrtle_vision.utils.data_loader import DlrsdLoader
 from myrtle_vision.utils.data_loader import collate_both
 from myrtle_vision.utils.models import get_models
 from myrtle_vision.utils.models import prepare_model_and_load_ckpt
-from myrtle_vision.utils.utils import get_label_list
 from myrtle_vision.utils.utils import parse_config
 from myrtle_vision.utils.miou import MIoU
 

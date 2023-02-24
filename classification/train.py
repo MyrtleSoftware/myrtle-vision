@@ -1,7 +1,6 @@
 import argparse
 import json
 import os
-import sys
 import signal
 from datetime import datetime
 

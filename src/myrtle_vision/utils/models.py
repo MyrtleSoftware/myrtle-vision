@@ -215,7 +215,6 @@ def rename_timm_state_dict(timm_model_name, vit_config, num_classes):
         # rather than a Conv2D.
         if new_key == "patch_to_embedding.weight":
             embed_dim = vit_config["embed_dim"]
-            mlp_dim = vit_config["mlp_dim"]
             patch_dim = vit_config["patch_size"]**2 * 3
             # (O,I,H,W) -> (O,(H,W,I))
             state_dict[new_key] = timm_vit.state_dict()[key].permute(0, 2, 3, 1).reshape(embed_dim, patch_dim)

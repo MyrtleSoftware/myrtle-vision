@@ -13,6 +13,8 @@ setup(
         "scikit-learn",
         "tqdm",
         "tensorboard",
+        "scipy",
+        "pycocotools",
     ],
     packages=find_packages(
         where="src",

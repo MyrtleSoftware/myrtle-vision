@@ -9,6 +9,7 @@ from myrtle_vision.utils.quantize import QFormat
 from torch import nn
 from torch.quantization import DeQuantStub
 from torch.quantization import QuantStub
+import torch.nn.functional as F
 
 MIN_NUM_PATCHES = 16
 
@@ -194,7 +195,8 @@ class ViT(nn.Module):
         assert decoder in {
             "classification",
             "segmentation",
-        }, "decoder must be either classification or segmentation"
+            "detection",
+        }, "decoder must be either classification, segmentation, or detection"
         self.patch_size = patch_size
 
         # Create context managers when profiling model
@@ -209,9 +211,13 @@ class ViT(nn.Module):
             self.cm_transformer = nullcontext()
             self.cm_mlp_head = nullcontext()
 
-        self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
+        # Following YOLOS, the positional embedding should be interpolated on
+        # the fly to handle larger image sizes
+        self.pos_embedding = nn.Parameter(torch.randn(1, 14 * 14 + 1, dim))
+        self.pos_embedding_det = nn.Parameter(torch.randn(1, 100, dim))
         self.patch_to_embedding = nn.Linear(patch_dim, dim)
         self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
+        self.det_tokens = nn.Parameter(torch.randn(1, 100, dim))
         self.dropout = nn.Dropout(emb_dropout)
 
         self.transformer = Transformer(
@@ -236,13 +242,20 @@ class ViT(nn.Module):
                 image_size,
                 patch_size,
             )
+        elif decoder == "detection":
+            self.decoder = DetectionDecoder(
+                dim,
+                num_classes,
+            )
 
         self.quant_img = QuantStub()
         self.quant_pos_embedding = QuantStub()
         self.quant_cls_token = QuantStub()
+        self.quant_det_tokens = QuantStub()
         self.dequant_output = DeQuantStub()
         self.cls_token_cat = torch.nn.quantized.FloatFunctional()
         self.pos_embedding_add = torch.nn.quantized.FloatFunctional()
+        self.pos_embedding_cat = torch.nn.quantized.FloatFunctional()
         self.quantizer = ModelQuantizer(self)
         self.quantizer.prepare_qat(
             q_format if q_format is not None else QFormat.FP32
@@ -262,15 +275,27 @@ class ViT(nn.Module):
             x = self.patch_to_embedding(x)
         b, n, _ = x.shape
 
-        # Add lass token at the beginning of the input sequence
+        # Add class token at the beginning of the input sequence
         cls_tokens = self.cls_token.repeat(b, 1, 1)
         cls_tokens = self.quant_cls_token(cls_tokens)
-        x = self.cls_token_cat.cat((cls_tokens, x), dim=1)
+        det_tokens = self.det_tokens.repeat(b, 1, 1)
+        det_tokens = self.quant_det_tokens(det_tokens)
+        x = self.cls_token_cat.cat((cls_tokens, x, det_tokens), dim=1)
+
+        pos_embedding_cls, pos_embedding = self.pos_embedding[:, 0:1, :], self.pos_embedding[:, 1:, :]
+        # On the fly positional embedding scaling
+        pos_embedding = pos_embedding.transpose(1, 2)
+        pos_embedding = pos_embedding.view(1, -1, 14, 14)
+        pos_embedding = F.interpolate(pos_embedding, size=(h_dim // p, w_dim // p), mode="bicubic", align_corners=False)
+        pos_embedding = pos_embedding.view(1, -1, (h_dim // p) * (w_dim // p))
+        pos_embedding = pos_embedding.transpose(1, 2)
+        pos_embedding = self.pos_embedding_cat.cat((pos_embedding_cls, pos_embedding, self.pos_embedding_det), dim=1)
+
         # Add the positional embedding
         x = self.pos_embedding_add.add(
             x,
             self.quant_pos_embedding(
-                self.pos_embedding.repeat(x.size(0), 1, 1)
+                pos_embedding.repeat(x.size(0), 1, 1)
             ),
         )
         x = self.dropout(x)
@@ -337,3 +362,23 @@ class SegmentationDecoder(nn.Module):
 
         # Returns class probability distribution per pixel
         return x
+
+class DetectionDecoder(nn.Module):
+    def __init__(
+        self,
+        in_dim,
+        num_classes,
+    ):
+        super().__init__()
+
+        self.class_embed = nn.Linear(in_dim, num_classes + 1) # +1 for no-class
+        self.bbox_embed = nn.Linear(in_dim, 4)
+
+    def forward(self, x: torch.Tensor):
+        # Get just the detection tokens
+        x = x[:, -100:, :]
+
+        return {
+            "pred_logits": self.class_embed(x),
+            "pred_boxes": self.bbox_embed(x).sigmoid(),
+        }

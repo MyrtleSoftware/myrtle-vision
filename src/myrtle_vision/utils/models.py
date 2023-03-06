@@ -95,9 +95,9 @@ def get_optimizer_args(train_config):
     optimizer_args.sched = train_config["scheduler"]
     lr = train_config["lr"] # * train_config["global_batch_size"] / 512.0
     optimizer_args.lr = lr
-    optimizer_args.lr_noise = train_config["lr_noise"]
-    optimizer_args.lr_noise_pct = train_config["lr_noise_pct"]
-    optimizer_args.lr_noise_std = train_config["lr_noise_std"]
+    optimizer_args.lr_noise = train_config.get("lr_noise")
+    optimizer_args.lr_noise_pct = train_config.get("lr_noise_pct")
+    optimizer_args.lr_noise_std = train_config.get("lr_noise_std")
     optimizer_args.warmup_lr = train_config["warmup_lr"]
     optimizer_args.min_lr = train_config["min_lr"]
     optimizer_args.epochs = train_config["epochs"]

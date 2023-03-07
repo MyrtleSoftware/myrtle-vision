@@ -93,7 +93,7 @@ def get_optimizer_args(train_config):
     optimizer_args.weight_decay = train_config["weight_decay"]
     # Learning rate schedule parameters
     optimizer_args.sched = train_config["scheduler"]
-    lr = train_config["lr"] # * train_config["global_batch_size"] / 512.0
+    lr = train_config["lr"]
     optimizer_args.lr = lr
     optimizer_args.lr_noise = train_config.get("lr_noise")
     optimizer_args.lr_noise_pct = train_config.get("lr_noise_pct")

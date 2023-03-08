@@ -142,10 +142,13 @@ def train_deit(rank, num_gpus, config):
         pin_memory=False,
         drop_last=train_config["drop_last_batch"],
     )
+    val_sampler = DistributedSampler(valset, shuffle=False) if num_gpus > 1 else None
     val_loader = DataLoader(
         valset,
         num_workers=1,
         batch_size=batch_size,
+        shuffle=False,
+        sampler=val_sampler,
         collate_fn=T.collate_fn,
         pin_memory=False,
         drop_last=train_config["drop_last_batch"],

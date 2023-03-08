@@ -16,7 +16,7 @@
         "momentum": 0.9,
         "weight_decay": 0.05,
         "scheduler": "cosine",
-        "lr": 4e-3,
+        "lr": 6.25e-5,
         "lr_noise": null,
         "lr_noise_pct": 0.67,
         "lr_noise_std": 1.0,

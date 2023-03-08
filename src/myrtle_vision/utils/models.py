@@ -8,7 +8,7 @@ from myrtle_vision.utils.quantize import QFormat
 from myrtle_vision.utils.utils import parse_config
 from myrtle_vision.models.distill import DistillableViT
 from myrtle_vision.models.distill import DistillWrapper
-from myrtle_vision.models.vit_pytorch import ViT
+from myrtle_vision.models.vit import ViT
 
 
 def get_teacher(num_classes, weights_path):

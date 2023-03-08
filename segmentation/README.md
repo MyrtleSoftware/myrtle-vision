@@ -46,7 +46,7 @@ Follow these setup steps before moving on to any of the steps below.
    $ python prepare_dlrsd.py
    ```
 ## Training
-1. Train the Segmenter model using the training config file for the
+   Train the Segmenter model using the training config file for the
    specific configuration you want to use:
 
    ```bash
@@ -64,9 +64,6 @@ Follow these setup steps before moving on to any of the steps below.
 
    If cuda is available, it will be used by default. If you want to use cpu for
    training, then run:  `export CUDA_HOME=''`, before running the training script.
-
-2. The data augmentations applied to the DLRSD dataset are only resizing to 224x224
-   pixels, and normalization. No other data augmentations have been investigated yet.
 
 ## Testing
    Running inferences can be done with the following command:

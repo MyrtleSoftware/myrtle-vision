@@ -1,6 +1,6 @@
 {
     "train_config": {
-        "output_directory": "checkpoints_yolos_tiny",
+        "output_directory": "checkpoints_yolos_small",
         "checkpoint_path": "",
         "epochs": 300,
         "local_batch_size": 2,
@@ -29,7 +29,7 @@
         "cardinality_error": 0.0,
         "eos_coef": 0.1,
         "distributed": true,
-        "pretrained_backbone": "vit_tiny_patch16_224"
+        "pretrained_backbone": "vit_small_patch16_224"
     },
 
     "data_config_path": "data_configs/data_config.json",
@@ -43,10 +43,10 @@
         "decoder": "detection",
         "image_size": 224,
         "patch_size": 16,
-        "embed_dim": 192,
+        "embed_dim": 384,
         "depth": 12,
-        "heads": 3,
-        "mlp_dim": 768,
+        "heads": 6,
+        "mlp_dim": 1536,
         "dropout": 0.0,
         "num_det_tokens": 100,
         "emb_dropout": 0.0,

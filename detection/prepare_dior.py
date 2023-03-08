@@ -1,5 +1,6 @@
 import argparse
 import json
+import random
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
@@ -8,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 from zipfile import ZipFile
+
+random.seed(0)
 
 dior_classes = [
     "airplane",
@@ -119,6 +122,9 @@ The directory containing the DIOR zip files should look like this:
 )
 parser.add_argument("dior_dir", type=Path, help="Directory containing DIOR zip files")
 parser.add_argument("output_dir", type=Path, help="Directory to write the converted dataset to")
+parser.add_argument("--train-subset", type=int, help="Number of images from the train set to use")
+parser.add_argument("--val-subset", type=int, help="Number of images from the val set to use")
+parser.add_argument("--test-subset", type=int, help="Number of images from the test set to use")
 args = parser.parse_args()
 
 if args.output_dir.exists() and next(args.output_dir.iterdir(), None) is not None:
@@ -130,7 +136,15 @@ imagesets_zip_path = args.dior_dir / "ImageSets.zip"
 imagesets = {}
 for split in ["train", "val", "test"]:
     with zipfile.Path(imagesets_zip_path, at=f"Main/{split}.txt").open() as f:
-        imagesets[split] = (f.read().decode("UTF-8").strip().split("\r\n"))[:100]
+        imageset = f.read().decode("UTF-8").strip().split("\r\n")
+        args_dict = vars(args) # treat args as a dictionary so we can lookup with a variable
+        subset = args_dict.get(f"{split}_subset")
+        if subset is None:
+            imagesets[split] = imageset
+        else:
+            randperm = list(range(len(imageset)))
+            random.shuffle(randperm)
+            imagesets[split] = [imageset[i] for i in randperm[:subset]]
 
 annotations_zip_path = args.dior_dir / "Annotations.zip"
 with tempfile.TemporaryDirectory(prefix="DIOR-Annotations-") as extracted_annotations_dir:

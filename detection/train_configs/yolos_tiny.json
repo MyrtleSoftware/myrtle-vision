@@ -48,6 +48,7 @@
         "heads": 3,
         "mlp_dim": 768,
         "dropout": 0.0,
+        "num_det_tokens": 100,
         "emb_dropout": 0.0,
         "q_format": "FP32"
     }

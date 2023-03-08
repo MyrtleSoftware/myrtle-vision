@@ -178,6 +178,7 @@ class ViT(nn.Module):
         dim_head: int = 64,
         dropout: float = 0.0,
         emb_dropout: float = 0.0,
+        num_det_tokens: int = 100,
         profile: bool = False,
         q_format: Optional[Union[str, QFormat]] = None,
     ):
@@ -192,6 +193,7 @@ class ViT(nn.Module):
             f"attention to be effective (at least 16). Try decreasing your "
             f"patch size"
         )
+        self.decoder = decoder
         assert decoder in {
             "classification",
             "segmentation",
@@ -214,10 +216,10 @@ class ViT(nn.Module):
         # Following YOLOS, the positional embedding should be interpolated on
         # the fly to handle larger image sizes
         self.pos_embedding = nn.Parameter(torch.randn(1, 14 * 14 + 1, dim))
-        self.pos_embedding_det = nn.Parameter(torch.randn(1, 100, dim))
+        self.pos_embedding_det = nn.Parameter(torch.randn(1, num_det_tokens, dim))
         self.patch_to_embedding = nn.Linear(patch_dim, dim)
         self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
-        self.det_tokens = nn.Parameter(torch.randn(1, 100, dim))
+        self.det_tokens = nn.Parameter(torch.randn(1, num_det_tokens, dim))
         self.dropout = nn.Dropout(emb_dropout)
 
         self.transformer = Transformer(
@@ -246,6 +248,7 @@ class ViT(nn.Module):
             self.decoder = DetectionDecoder(
                 dim,
                 num_classes,
+                num_det_tokens,
             )
 
         self.quant_img = QuantStub()
@@ -275,12 +278,16 @@ class ViT(nn.Module):
             x = self.patch_to_embedding(x)
         b, n, _ = x.shape
 
-        # Add class token at the beginning of the input sequence
+        # Add class token at the beginning of the input sequence, and det
+        # tokens at the end for YOLOS object detection
         cls_tokens = self.cls_token.repeat(b, 1, 1)
         cls_tokens = self.quant_cls_token(cls_tokens)
         det_tokens = self.det_tokens.repeat(b, 1, 1)
         det_tokens = self.quant_det_tokens(det_tokens)
-        x = self.cls_token_cat.cat((cls_tokens, x, det_tokens), dim=1)
+        if self.decoder == "detection":
+            x = self.cls_token_cat.cat((cls_tokens, x, det_tokens), dim=1)
+        else:
+            x = self.cls_token_cat.cat((cls_tokens, x), dim=1)
 
         pos_embedding_cls, pos_embedding = self.pos_embedding[:, 0:1, :], self.pos_embedding[:, 1:, :]
         # On the fly positional embedding scaling
@@ -289,7 +296,10 @@ class ViT(nn.Module):
         pos_embedding = F.interpolate(pos_embedding, size=(h_dim // p, w_dim // p), mode="bicubic", align_corners=False)
         pos_embedding = pos_embedding.view(1, -1, (h_dim // p) * (w_dim // p))
         pos_embedding = pos_embedding.transpose(1, 2)
-        pos_embedding = self.pos_embedding_cat.cat((pos_embedding_cls, pos_embedding, self.pos_embedding_det), dim=1)
+        if self.decoder == "detection":
+            pos_embedding = self.pos_embedding_cat.cat((pos_embedding_cls, pos_embedding, self.pos_embedding_det), dim=1)
+        else:
+            pos_embedding = self.pos_embedding_cat.cat((pos_embedding_cls, pos_embedding), dim=1)
 
         # Add the positional embedding
         x = self.pos_embedding_add.add(
@@ -368,15 +378,17 @@ class DetectionDecoder(nn.Module):
         self,
         in_dim,
         num_classes,
+        num_det_tokens,
     ):
         super().__init__()
 
         self.class_embed = nn.Linear(in_dim, num_classes + 1) # +1 for no-class
         self.bbox_embed = nn.Linear(in_dim, 4)
+        self.num_det_tokens = num_det_tokens
 
     def forward(self, x: torch.Tensor):
         # Get just the detection tokens
-        x = x[:, -100:, :]
+        x = x[:, -self.num_det_tokens:, :]
 
         return {
             "pred_logits": self.class_embed(x),

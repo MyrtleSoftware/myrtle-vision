@@ -1,4 +1,5 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# SPDX-License-Identifier: Apache-2.0
 """
 Transforms and data augmentation for both image + bbox.
 

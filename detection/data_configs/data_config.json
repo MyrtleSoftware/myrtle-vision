@@ -6,6 +6,9 @@
     "train_annotations": "train.json",
     "valid_annotations": "val.json",
     "test_annotations": "test.json",
+    "train_subset": null,
+    "valid_subset": 500,
+    "test_subset": null,
     "number_of_classes": 20,
     "transform_ops_train": {
         "RandomHorizontalFlip": null,

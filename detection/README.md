@@ -55,9 +55,6 @@ Follow these setup steps before moving on to any of the steps below.
    $ python prepare_dior.py ./DIOR ./DIOR-COCO
    ```
 
-   The script also accepts `--{train,val,test}-subset` arguments to, e.g. make a
-   smaller validation set that is quicker to evaluate on.
-
 ## Training
 
    Train the YOLOS model using the training config file for the

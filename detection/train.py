@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import random
 import signal
 from datetime import datetime
 from pathlib import Path
@@ -13,11 +14,13 @@ from timm.optim import create_optimizer
 from timm.scheduler import create_scheduler
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
+from torch.utils.data import Subset
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.tensorboard import SummaryWriter
 
 import myrtle_vision.transforms.detection as T
 from myrtle_vision.datasets.coco import CocoDetection
+from myrtle_vision.datasets.coco_eval import coco_from_dataset
 from myrtle_vision.datasets.coco_eval import CocoEvaluator
 from myrtle_vision.models.detector import PostProcess
 from myrtle_vision.models.detector import SetCriterion
@@ -33,9 +36,10 @@ from myrtle_vision.utils.utils import init_distributed
 from myrtle_vision.utils.utils import parse_config
 from myrtle_vision.utils.utils import seed_everything
 
+
 @torch.no_grad()
-def validation(valset, val_loader, num_classes, device, criterion, weight_dict, iteration, vit):
-    coco_evaluator = CocoEvaluator(valset.coco, ["bbox"])
+def validation(coco, val_loader, num_classes, device, criterion, weight_dict, iteration, vit):
+    coco_evaluator = CocoEvaluator(coco, ["bbox"])
 
     total_val_loss = 0
     vit.eval()
@@ -119,17 +123,27 @@ def train_deit(rank, num_gpus, config):
             { "metric": 0.0 },
         )
 
+    def random_draw(k, n):
+        "Picks k elements at random from range(0, n)"
+        randperm = list(range(n))
+        random.shuffle(randperm)
+        return randperm[:k]
+
     # load train and validation sets
     trainset = CocoDetection(
         img_folder=Path(data_config["dataset_path"]) / data_config["train_images"],
         ann_file=Path(data_config["dataset_path"]) / "annotations" / data_config["train_annotations"],
         transforms=T.from_config(data_config["transform_ops_train"]),
     )
+    if data_config.get("train_subset") is not None:
+        trainset = Subset(trainset, random_draw(data_config["train_subset"], len(trainset)))
     valset = CocoDetection(
         img_folder=Path(data_config["dataset_path"]) / data_config["valid_images"],
         ann_file=Path(data_config["dataset_path"]) / "annotations" / data_config["valid_annotations"],
         transforms=T.from_config(data_config["transform_ops_val"]),
     )
+    if data_config.get("valid_subset") is not None:
+        valset = Subset(valset, random_draw(data_config["valid_subset"], len(valset)))
 
     train_sampler = DistributedSampler(trainset) if num_gpus > 1 else None
     train_loader = DataLoader(
@@ -277,7 +291,7 @@ def train_deit(rank, num_gpus, config):
             model_to_eval = vit.module if num_gpus > 1 else vit
             print(f"Epoch {epoch} validation...")
             epoch_last_val_loss, epoch_last_val_accuracy = validation(
-                valset=valset,
+                coco=coco_from_dataset(valset),
                 val_loader=val_loader,
                 num_classes=num_classes,
                 device=device,

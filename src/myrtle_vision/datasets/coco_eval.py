@@ -22,6 +22,14 @@ import pycocotools.mask as mask_util
 from myrtle_vision.utils.utils import all_gather
 
 
+def coco_from_dataset(dataset: torch.utils.data.Dataset) -> COCO:
+    "Get the underlying COCO object from a (possibly subsetted) CocoDetection dataset."
+    if isinstance(dataset, torch.utils.data.Subset):
+        return coco_from_dataset(dataset.dataset)
+    else:
+        return dataset.coco
+
+
 class CocoEvaluator(object):
     def __init__(self, coco_gt, iou_types):
         assert isinstance(iou_types, (list, tuple))

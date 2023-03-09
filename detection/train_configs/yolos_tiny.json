@@ -1,12 +1,10 @@
 {
     "train_config": {
-        "output_directory": "checkpoints_vit_tiny",
+        "output_directory": "checkpoints_yolos_tiny",
         "checkpoint_path": "",
         "epochs": 300,
-        "local_batch_size": 32,
-        "global_batch_size": 64,
-        "iters_per_checkpoint": 1000,
-        "iters_per_val": 1000,
+        "local_batch_size": 2,
+        "global_batch_size": 4,
         "seed": 1234,
         "drop_last_batch": true,
         "optimizer": "adamw",
@@ -16,17 +14,20 @@
         "momentum": 0.9,
         "weight_decay": 0.05,
         "scheduler": "cosine",
-        "lr": 6.25e-5,
-        "lr_noise": null,
-        "lr_noise_pct": 0.67,
-        "lr_noise_std": 1.0,
+        "lr": 5e-5,
         "warmup_lr": 1e-6,
-        "min_lr": 1e-5,
+        "min_lr": 1e-7,
         "decay_epochs": 15,
         "warmup_epochs": 5,
         "cooldown_epochs": 5,
         "patience_epochs": 5,
         "decay_rate": 0.1,
+        "loss_ce": 1.0,
+        "class_error": 0.0,
+        "loss_bbox": 5.0,
+        "loss_giou": 2.0,
+        "cardinality_error": 0.0,
+        "eos_coef": 0.1,
         "distributed": true,
         "pretrained_backbone": "vit_tiny_patch16_224"
     },
@@ -39,7 +40,7 @@
     },
 
     "vit_config": {
-        "decoder": "classification",
+        "decoder": "detection",
         "image_size": 224,
         "patch_size": 16,
         "embed_dim": 192,
@@ -47,6 +48,7 @@
         "heads": 3,
         "mlp_dim": 768,
         "dropout": 0.0,
+        "num_det_tokens": 100,
         "emb_dropout": 0.0,
         "q_format": "FP32"
     }

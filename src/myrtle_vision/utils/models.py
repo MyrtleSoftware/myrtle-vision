@@ -6,9 +6,9 @@ import torch
 from torchvision.models import resnet50
 from myrtle_vision.utils.quantize import QFormat
 from myrtle_vision.utils.utils import parse_config
-from myrtle_vision.vit.distill import DistillableViT
-from myrtle_vision.vit.distill import DistillWrapper
-from myrtle_vision.vit.vit_pytorch import ViT
+from myrtle_vision.models.distill import DistillableViT
+from myrtle_vision.models.distill import DistillWrapper
+from myrtle_vision.models.vit import ViT
 
 
 def get_teacher(num_classes, weights_path):
@@ -93,11 +93,11 @@ def get_optimizer_args(train_config):
     optimizer_args.weight_decay = train_config["weight_decay"]
     # Learning rate schedule parameters
     optimizer_args.sched = train_config["scheduler"]
-    lr = train_config["lr"] * train_config["global_batch_size"] / 512.0
+    lr = train_config["lr"]
     optimizer_args.lr = lr
-    optimizer_args.lr_noise = train_config["lr_noise"]
-    optimizer_args.lr_noise_pct = train_config["lr_noise_pct"]
-    optimizer_args.lr_noise_std = train_config["lr_noise_std"]
+    optimizer_args.lr_noise = train_config.get("lr_noise")
+    optimizer_args.lr_noise_pct = train_config.get("lr_noise_pct")
+    optimizer_args.lr_noise_std = train_config.get("lr_noise_std")
     optimizer_args.warmup_lr = train_config["warmup_lr"]
     optimizer_args.min_lr = train_config["min_lr"]
     optimizer_args.epochs = train_config["epochs"]

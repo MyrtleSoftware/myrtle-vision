@@ -1,0 +1,46 @@
+{
+    "dataset_path": "DIOR-COCO",
+    "train_images": "train",
+    "valid_images": "val",
+    "test_images": "test",
+    "train_annotations": "train.json",
+    "valid_annotations": "val.json",
+    "test_annotations": "test.json",
+    "train_subset": null,
+    "valid_subset": 500,
+    "test_subset": null,
+    "number_of_classes": 20,
+    "transform_ops_train": {
+        "RandomHorizontalFlip": null,
+        "RandomSelect": {
+            "RandomResize": {
+                "scales": [256, 272, 288, 304, 320, 336, 352, 368, 384, 400, 416, 432, 448, 464, 480, 496, 512, 528, 544, 560, 576, 592, 608],
+                "max_size_ratio": [1333, 800]
+            },
+            "Compose": {
+                "PreRandomResize": {
+                    "scales": [400, 500, 600]
+                },
+                "RandomSizeCrop": [384, 600],
+                "PostRandomResize": {
+                    "scales": [256, 272, 288, 304, 320, 336, 352, 368, 384, 400, 416, 432, 448, 464, 480, 496, 512, 528, 544, 560, 576, 592, 608],
+                    "max_size_ratio": [1333, 800]
+                }
+            }
+        },
+        "Normalize": {
+            "Mean": [0.5, 0.5, 0.5],
+            "Std": [0.5, 0.5, 0.5]
+        }
+    },
+    "transform_ops_val": {
+        "RandomResize": {
+            "scales": [800],
+            "max_size_ratio": [1333, 800]
+        },
+        "Normalize": {
+            "Mean": [0.5, 0.5, 0.5],
+            "Std": [0.5, 0.5, 0.5]
+        }
+    }
+}

@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch import nn
 from torch.quantization import DeQuantStub
 from torch.quantization import QuantStub
-from myrtle_vision.vit.vit_pytorch import ViT
+from myrtle_vision.models.vit import ViT
 
 
 class DistillableViT(ViT):

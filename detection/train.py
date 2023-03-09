@@ -1,9 +1,10 @@
 import argparse
 import json
 import os
-import sys
+import random
 import signal
 from datetime import datetime
+from pathlib import Path
 
 import psutil
 import torch
@@ -13,11 +14,17 @@ from timm.optim import create_optimizer
 from timm.scheduler import create_scheduler
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
+from torch.utils.data import Subset
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.tensorboard import SummaryWriter
 
-from myrtle_vision.datasets.dlrsd import Dlrsd
-from myrtle_vision.transforms.segmentation import collate_both
+import myrtle_vision.transforms.detection as T
+from myrtle_vision.datasets.coco import CocoDetection
+from myrtle_vision.datasets.coco_eval import coco_from_dataset
+from myrtle_vision.datasets.coco_eval import CocoEvaluator
+from myrtle_vision.models.detector import PostProcess
+from myrtle_vision.models.detector import SetCriterion
+from myrtle_vision.models.matcher import HungarianMatcher
 from myrtle_vision.utils.models import get_models
 from myrtle_vision.utils.models import get_optimizer_args
 from myrtle_vision.utils.models import prepare_model_and_load_ckpt
@@ -28,52 +35,40 @@ from myrtle_vision.utils.utils import get_batch_sizes
 from myrtle_vision.utils.utils import init_distributed
 from myrtle_vision.utils.utils import parse_config
 from myrtle_vision.utils.utils import seed_everything
-from myrtle_vision.utils.miou import MIoU
 
-writer = SummaryWriter("runs/")
 
-def validation(val_loader, n_classes, device, criterion, iteration, vit):
+@torch.no_grad()
+def validation(coco, val_loader, num_classes, device, criterion, weight_dict, iteration, vit):
+    coco_evaluator = CocoEvaluator(coco, ["bbox"])
+
     total_val_loss = 0
-    total_val_acc = 0
-    ground_truth_labels = []
-    predicted_labels = []
-    miou = MIoU(num_classes=n_classes, device=device)
-    # run validation steps
     vit.eval()
-    with torch.no_grad():
-        for val_imgs, val_labels in val_loader:
-            val_imgs = val_imgs.to(device)
-            val_labels = val_labels.to(device)
+    criterion.eval()
 
-            val_outputs = vit(val_imgs)
-            # calculate batch validation loss
-            val_loss = criterion(val_outputs, val_labels)
-            total_val_loss += val_loss / len(val_loader)
+    post_processor = PostProcess()
 
-            # calculate batch validation accuracy
-            val_acc = (val_outputs.argmax(dim=1) == val_labels).float().mean()
-            total_val_acc += val_acc / len(val_loader)
+    for val_imgs, val_labels in val_loader:
+        val_imgs = val_imgs.to(device)
+        val_labels = [{k: v.to(device) for k, v in t.items()} for t in val_labels]
+        val_outputs = vit(val_imgs.tensors)
+        orig_target_sizes = torch.stack([t["orig_size"] for t in val_labels])
+        results = post_processor(val_outputs, orig_target_sizes)
+        res = {val_label["image_id"].item(): output for val_label, output in zip(val_labels, results)}
+        coco_evaluator.update(res)
 
-            ## calculate batch validation metric (mIoU)
-            val_outputs = val_outputs.argmax(dim=1)
-            miou.add_img(val_outputs, val_labels)
-            ground_truth_labels.extend(val_labels.detach().cpu().numpy())
-            predicted_labels.extend(val_outputs.detach().cpu().numpy())
+        # calculate batch validation loss
+        val_loss = criterion(val_outputs, val_labels)
+        val_loss = sum(val_loss[k] * weight_dict[k] for k in val_loss.keys() if k in weight_dict)
+        total_val_loss += val_loss / len(val_loader)
 
-    #per_class_iou = miou.get_per_class_iou()
-
-    miou = miou.get_miou()
-    print(f"miou is {miou}")
-
-    # Log accuracy, loss, mIoU
-    writer.add_scalar("accuracy", total_val_acc, iteration)
-    writer.add_scalar("loss", total_val_loss, iteration)
-    writer.add_scalar("miou", miou, iteration)
+    coco_evaluator.synchronize_between_processes()
+    coco_evaluator.accumulate()
+    coco_evaluator.summarize()
 
     vit.train()
+    criterion.train()
 
-    return total_val_loss, total_val_acc
-
+    return total_val_loss, coco_evaluator.coco_eval["bbox"].stats[0]
 
 def train_deit(rank, num_gpus, config):
     torch.backends.cudnn.enabled = True
@@ -85,12 +80,10 @@ def train_deit(rank, num_gpus, config):
     vit_config = config["vit_config"]
     # parse data config
     data_config = parse_config(config["data_config_path"])
-    n_classes = data_config["number_of_classes"]
+    num_classes = data_config["number_of_classes"]
 
     epochs = train_config["epochs"]
     output_directory = train_config["output_directory"]
-    iters_per_checkpoint = train_config["iters_per_checkpoint"]
-    iters_per_val = train_config["iters_per_val"]
     seed = train_config["seed"]
     batch_size = train_config["local_batch_size"]
     global_batch_size = train_config["global_batch_size"]
@@ -121,21 +114,36 @@ def train_deit(rank, num_gpus, config):
             os.chmod(output_directory, 0o775)
         print("output directory:", output_directory)
 
+    if rank == 0:
+        timestamp = datetime.now().strftime("%m_%d_%Y_%H_%M_%S")
+        writer = SummaryWriter(f"runs/{timestamp}")
+        writer.add_hparams(
+            train_config,
+            # Need non-empty metric dict for tensorboard to show hparams
+            { "metric": 0.0 },
+        )
+
+    def random_draw(k, n):
+        "Picks k elements at random from range(0, n)"
+        randperm = list(range(n))
+        random.shuffle(randperm)
+        return randperm[:k]
+
     # load train and validation sets
-    trainset = Dlrsd(
-        mode="train",
-        dataset_path=data_config["dataset_path"],
-        imagepaths=data_config["train_files"],
-        label_map_path=data_config["label_map"],
-        transform_config=data_config["transform_ops_train"],
+    trainset = CocoDetection(
+        img_folder=Path(data_config["dataset_path"]) / data_config["train_images"],
+        ann_file=Path(data_config["dataset_path"]) / "annotations" / data_config["train_annotations"],
+        transforms=T.from_config(data_config["transform_ops_train"]),
     )
-    valset = Dlrsd(
-        mode="eval",
-        dataset_path=data_config["dataset_path"],
-        imagepaths=data_config["valid_files"],
-        label_map_path=data_config["label_map"],
-        transform_config=data_config["transform_ops_val"],
+    if data_config.get("train_subset") is not None:
+        trainset = Subset(trainset, random_draw(data_config["train_subset"], len(trainset)))
+    valset = CocoDetection(
+        img_folder=Path(data_config["dataset_path"]) / data_config["valid_images"],
+        ann_file=Path(data_config["dataset_path"]) / "annotations" / data_config["valid_annotations"],
+        transforms=T.from_config(data_config["transform_ops_val"]),
     )
+    if data_config.get("valid_subset") is not None:
+        valset = Subset(valset, random_draw(data_config["valid_subset"], len(valset)))
 
     train_sampler = DistributedSampler(trainset) if num_gpus > 1 else None
     train_loader = DataLoader(
@@ -144,15 +152,18 @@ def train_deit(rank, num_gpus, config):
         shuffle=(train_sampler is None),
         sampler=train_sampler,
         batch_size=batch_size,
-        collate_fn=collate_both,
+        collate_fn=T.collate_fn,
         pin_memory=False,
         drop_last=train_config["drop_last_batch"],
     )
+    val_sampler = DistributedSampler(valset, shuffle=False) if num_gpus > 1 else None
     val_loader = DataLoader(
         valset,
         num_workers=1,
         batch_size=batch_size,
-        collate_fn=collate_both,
+        shuffle=False,
+        sampler=val_sampler,
+        collate_fn=T.collate_fn,
         pin_memory=False,
         drop_last=train_config["drop_last_batch"],
     )
@@ -168,13 +179,12 @@ def train_deit(rank, num_gpus, config):
             rename_timm_state_dict(
                 pretrained_backbone,
                 vit_config,
-                data_config["number_of_classes"],
+                num_classes,
             ),
             strict=False,
         ).unexpected_keys == []
 
-    if num_gpus > 0:
-        vit = vit.to(rank)
+    vit = vit.to(rank)
 
     # Distribute models
     if num_gpus > 1:
@@ -185,11 +195,29 @@ def train_deit(rank, num_gpus, config):
     optimizer = create_optimizer(optimizer_args, vit)
     lr_scheduler, _ = create_scheduler(optimizer_args, optimizer)
     loss_scaler = torch.cuda.amp.GradScaler()
-    criterion = torch.nn.CrossEntropyLoss()
+
+    matcher = HungarianMatcher()
+    weight_dict = {
+        k: train_config[k] for k in [
+            "loss_ce",
+            "class_error",
+            "loss_bbox",
+            "loss_giou",
+            "cardinality_error",
+        ]
+    }
+    criterion = SetCriterion(
+        num_classes,
+        matcher=matcher,
+        weight_dict=weight_dict,
+        eos_coef=train_config["eos_coef"],
+        losses=["labels", "boxes", "cardinality"],
+    )
+    criterion.to(device)
 
     iteration = prepare_model_and_load_ckpt(
         train_config=train_config,
-        model=vit.module if num_gpus > 1 else vit,
+        model=vit if num_gpus > 1 else vit,
         optimizer=optimizer,
         lr_scheduler=lr_scheduler,
     )
@@ -205,11 +233,10 @@ def train_deit(rank, num_gpus, config):
     try:
         n_accum = 0
         epoch_last_val_loss = 0
-        epoch_last_val_accuracy = 0
+        epoch_top_val_accuracy = 0
         # Train loop
         for epoch in range(epoch_offset, epochs):
             epoch_loss = 0
-            epoch_accuracy = 0
 
             if num_gpus > 1:
                 # Epoch number is used as a seed for random sampling in
@@ -218,52 +245,17 @@ def train_deit(rank, num_gpus, config):
                 train_sampler.set_epoch(epoch)
 
             for train_imgs, train_labels in train_loader:
-                if (
-                    iteration % iters_per_checkpoint == 0
-                    and n_accum == 0
-                    and rank == 0
-                ):
-                    # save checkpoint
-                    checkpoint_path = f"{output_directory}/vit_{iteration:06}"
-                    model_to_save = vit.module if num_gpus > 1 else vit
-                    save_checkpoint(
-                        model=model_to_save,
-                        optimizer=optimizer,
-                        lr_scheduler=lr_scheduler,
-                        iteration=iteration,
-                        filepath=checkpoint_path,
-                    )
-
-                if (
-                    iteration % iters_per_val == 0
-                    and n_accum == 0
-                    and rank == 0
-                ):
-                    # run validation
-                    torch.cuda.empty_cache()
-                    model_to_eval = vit.module if num_gpus > 1 else vit
-                    epoch_last_val_loss, epoch_last_val_accuracy = validation(
-                        val_loader=val_loader,
-                        n_classes=n_classes,
-                        device=device,
-                        criterion=criterion,
-                        iteration=iteration,
-                        vit=model_to_eval,
-                    )
 
                 if n_accum == 0:
                     vit.zero_grad()
 
                 train_imgs = train_imgs.to(device)
-                train_labels = train_labels.to(device)
+                train_labels = [{k: v.to(device) for k, v in t.items()} for t in train_labels]
 
-                outputs = vit(train_imgs)
+                outputs = vit(train_imgs.tensors)
                 train_loss = criterion(outputs, train_labels)
+                train_loss = sum(train_loss[k] * weight_dict[k] for k in train_loss.keys() if k in weight_dict)
                 epoch_loss += train_loss / len(train_loader)
-                # calculate batch accuracy and accumulate in epoch accuracy
-                output_labels = outputs.argmax(dim=1)
-                train_acc = (output_labels == train_labels).float().mean()
-                epoch_accuracy += train_acc / len(train_loader)
 
                 # is_second_order attribute is added by timm on one optimizer
                 # (adahessian)
@@ -292,15 +284,49 @@ def train_deit(rank, num_gpus, config):
                     if rank == 0:
                         print(
                             f"Iteration {iteration}:\tloss={train_loss:.4f}"
-                            f"\tacc={train_acc:.4f}"
                         )
+
+            # run validation
+            torch.cuda.empty_cache()
+            model_to_eval = vit.module if num_gpus > 1 else vit
+            print(f"Epoch {epoch} validation...")
+            epoch_last_val_loss, epoch_last_val_accuracy = validation(
+                coco=coco_from_dataset(valset),
+                val_loader=val_loader,
+                num_classes=num_classes,
+                device=device,
+                criterion=criterion,
+                weight_dict=weight_dict,
+                iteration=iteration,
+                vit=model_to_eval,
+            )
+
+            if (
+                epoch_last_val_accuracy >= epoch_top_val_accuracy
+                and rank == 0
+            ):
+                # save checkpoint
+                checkpoint_path = f"{output_directory}/vit_epoch{epoch}"
+                model_to_save = vit.module if num_gpus > 1 else vit
+                save_checkpoint(
+                    model=model_to_save,
+                    optimizer=optimizer,
+                    lr_scheduler=lr_scheduler,
+                    iteration=iteration,
+                    filepath=checkpoint_path,
+                )
+
+            epoch_top_val_accuracy = max(epoch_top_val_accuracy, epoch_last_val_accuracy)
+
+            if rank == 0:
+                writer.add_scalar("lr", optimizer.param_groups[0]["lr"], epoch)
+                writer.add_scalar("AP", epoch_last_val_accuracy, epoch)
 
             lr_scheduler.step(epoch)
 
             if rank == 0:
                 print(
                     f"Epoch : {epoch + 1} - loss : {epoch_loss:.4f} - "
-                    f"acc: {epoch_accuracy:.4f} - "
                     f"val_loss : {epoch_last_val_loss:.4f} - "
                     f"val_acc: {epoch_last_val_accuracy:.4f}\n"
                 )
@@ -346,11 +372,9 @@ if __name__ == "__main__":
     if config["train_config"]["distributed"]:
         if num_gpus <= 1:
             print(
-                "ERROR: tried to enable distributed training but only "
+                "WARNING: tried to enable distributed training but only "
                 f"found {num_gpus} GPU(s)"
             )
-            print("To disable distributed training, set `distributed` to `false` in the train_config")
-            sys.exit(1)
     elif num_gpus > 1:
         print(
             "INFO: you have multiple GPUs available but did not enable "
@@ -371,4 +395,3 @@ if __name__ == "__main__":
             train_deit(0, num_gpus, config)
     except KeyboardInterrupt:
         print("Ctrl-c pressed; cleaning up and ending training early...")
-

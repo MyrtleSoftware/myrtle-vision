@@ -384,6 +384,8 @@ class DetectionDecoder(nn.Module):
     ):
         super().__init__()
 
+        self.norm = nn.LayerNorm(hidden_dim)
+
         h = [hidden_dim for _ in range(num_layers - 1)]
         self.class_embed = nn.ModuleList(nn.Linear(in_dim, out_dim) for in_dim, out_dim in zip([hidden_dim] + h, h + [num_classes + 1])) # +1 for no-class
         self.bbox_embed = nn.ModuleList(nn.Linear(in_dim, out_dim) for in_dim, out_dim in zip([hidden_dim] + h, h + [4]))
@@ -392,6 +394,8 @@ class DetectionDecoder(nn.Module):
     def forward(self, x: torch.Tensor):
         # Get just the detection tokens
         x = x[:, -self.num_det_tokens:, :]
+
+        x = self.norm(x)
 
         logits = x
         boxes = x

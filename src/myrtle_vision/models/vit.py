@@ -284,7 +284,7 @@ class ViT(nn.Module):
         cls_tokens = self.quant_cls_token(cls_tokens)
         det_tokens = self.det_tokens.repeat(b, 1, 1)
         det_tokens = self.quant_det_tokens(det_tokens)
-        if self.decoder == "detection":
+        if isinstance(self.decoder, DetectionDecoder):
             x = self.cls_token_cat.cat((cls_tokens, x, det_tokens), dim=1)
         else:
             x = self.cls_token_cat.cat((cls_tokens, x), dim=1)
@@ -296,7 +296,7 @@ class ViT(nn.Module):
         pos_embedding = F.interpolate(pos_embedding, size=(h_dim // p, w_dim // p), mode="bicubic", align_corners=False)
         pos_embedding = pos_embedding.view(1, -1, (h_dim // p) * (w_dim // p))
         pos_embedding = pos_embedding.transpose(1, 2)
-        if self.decoder == "detection":
+        if isinstance(self.decoder, DetectionDecoder):
             pos_embedding = self.pos_embedding_cat.cat((pos_embedding_cls, pos_embedding, self.pos_embedding_det), dim=1)
         else:
             pos_embedding = self.pos_embedding_cat.cat((pos_embedding_cls, pos_embedding), dim=1)

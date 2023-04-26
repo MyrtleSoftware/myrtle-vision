@@ -249,6 +249,7 @@ class ViT(nn.Module):
                 dim,
                 num_classes,
                 num_det_tokens,
+                3,
             )
 
         self.quant_img = QuantStub()
@@ -376,21 +377,30 @@ class SegmentationDecoder(nn.Module):
 class DetectionDecoder(nn.Module):
     def __init__(
         self,
-        in_dim,
+        hidden_dim,
         num_classes,
         num_det_tokens,
+        num_layers,
     ):
         super().__init__()
 
-        self.class_embed = nn.Linear(in_dim, num_classes + 1) # +1 for no-class
-        self.bbox_embed = nn.Linear(in_dim, 4)
+        h = [hidden_dim for _ in range(num_layers - 1)]
+        self.class_embed = nn.ModuleList(nn.Linear(in_dim, out_dim) for in_dim, out_dim in zip([hidden_dim] + h, h + [num_classes + 1])) # +1 for no-class
+        self.bbox_embed = nn.ModuleList(nn.Linear(in_dim, out_dim) for in_dim, out_dim in zip([hidden_dim] + h, h + [4]))
         self.num_det_tokens = num_det_tokens
 
     def forward(self, x: torch.Tensor):
         # Get just the detection tokens
         x = x[:, -self.num_det_tokens:, :]
 
+        logits = x
+        boxes = x
+
+        for i, (class_layer, bbox_layer) in enumerate(zip(self.class_embed, self.bbox_embed)):
+            logits = F.relu(class_layer(logits)) if i < len(self.class_embed) - 1 else class_layer(logits)
+            boxes = F.relu(bbox_layer(boxes)) if i < len(self.bbox_embed) - 1 else bbox_layer(boxes)
+
         return {
-            "pred_logits": self.class_embed(x),
-            "pred_boxes": self.bbox_embed(x).sigmoid(),
+            "pred_logits": logits,
+            "pred_boxes": boxes.sigmoid(),
         }
